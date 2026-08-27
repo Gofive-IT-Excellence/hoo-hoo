@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HOO HOO | OCR Workspace</title>
+    <meta
+      name="description"
+      content="ระบบ OCR และตรวจสอบความแตกต่างของข้อความจากภาพ พร้อมคำแนะนำการแก้ไขอัตโนมัติ"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+
+  <body class="logged-out">
+    <section class="login-section" id="login">
+      <header class="landing-header">
+        <a class="login-brand" href="#login" aria-label="HOO HOO home">
+          <img src="assets/hooq-logo-transparent.png" alt="" />
+          <span>
+            <strong>HOO HOO</strong>
+            <small>AI Proofread</small>
+          </span>
+        </a>
+        <button class="landing-login-button" id="loginToggleButton" type="button">เข้าสู่ระบบ</button>
+      </header>
+
+      <div class="landing-hero">
+        <div class="landing-logo-wrap" aria-hidden="true">
+          <img class="landing-logo-animation" src="assets/hooq-logo-animation-alpha.png" alt="" />
+        </div>
+        <audio
+          id="owlSound"
+          src="assets/freesound_community-owl_hooting_000102_0145s3-002-070-000-002-068-074-37397.mp3"
+          preload="auto"
+        ></audio>
+        <button class="owl-sound-button" id="owlSoundButton" type="button" aria-label="เล่นเสียงฮูกฮูก" title="เล่นเสียงฮูกฮูก">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M11 5 6 9H3v6h3l5 4V5Z" />
+            <path d="M15 9.5a4 4 0 0 1 0 5" />
+            <path d="M18 7a8 8 0 0 1 0 10" />
+          </svg>
+        </button>
+        <div class="landing-badge">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z" />
+          </svg>
+          HOO HOO AI Proofread
+        </div>
+        <h1>
+          สวัสดี! HOO HOO พร้อมช่วย
+          <span>ตรวจพิสูจน์อักษร</span>
+          ได้เลย <strong>ใช้งานได้ทันที</strong>
+        </h1>
+        <p>
+          ตรวจสะกด ไวยากรณ์ และจับความต่างของภาพเอกสารภาษาไทย-อังกฤษ
+          ด้วย AI ที่เข้าใจภาษาไทย พร้อมคำแนะนำที่นำไปแก้ได้ในคลิกเดียว
+        </p>
+        <div class="landing-actions">
+          <button class="button button-primary" id="landingStartButton" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            เริ่มใช้งาน
+          </button>
+          <button class="button button-secondary" id="landingTrialButton" type="button">ทดลองพิสูจน์อักษรฟรี</button>
+        </div>
+      </div>
+
+      <div class="login-card" id="loginPanel" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+        <form class="login-form" id="loginForm">
+          <h2 id="loginTitle">เข้าสู่ระบบ</h2>
+          <label for="loginEmail">อีเมล</label>
+          <input id="loginEmail" name="email" type="email" value="kong@example.com" autocomplete="email" required />
+
+          <label for="loginPassword">รหัสผ่าน</label>
+          <input
+            id="loginPassword"
+            name="password"
+            type="password"
+            value="proofreading"
+            autocomplete="current-password"
+            required
+          />
+
+          <button class="button button-primary login-submit" type="submit">เข้าสู่ระบบ</button>
+        </form>
+      </div>
+    </section>
+
+    <div class="app-shell" aria-hidden="true">
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="HOO HOO home">
+        <span class="brand-mark" aria-hidden="true">
+          <img src="assets/hooq-logo-transparent.png" alt="" />
+        </span>
+        <span>
+          <strong>HOO HOO</strong>
+          <small>AI Proofread</small>
+        </span>
+      </a>
+      <nav class="nav-links" aria-label="Primary navigation">
+        <a href="#workspace">ตรวจเอกสาร</a>
+        <a href="#pricing">แพ็กเกจ</a>
+        <a href="#how-it-works">ขั้นตอน</a>
+        <a href="#result">ผลลัพธ์</a>
+        <button class="nav-button" id="logoutButton" type="button">ออกจากระบบ</button>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">HOO HOO Workspace</p>
+          <h1>ตรวจข้อความจากภาพ และเทียบความต่างในหน้าเดียว</h1>
+          <p>
+            อัปโหลดภาพเอกสารเพื่อทำ OCR พร้อมตรวจคำผิด หรือเลือกโหมดเทียบภาพ 2
+            ไฟล์ แล้วรับคำแนะนำการแก้ไขได้ทันที
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#workspace">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              เริ่มตรวจ
+            </a>
+            <a class="button button-secondary" href="#how-it-works">ดูขั้นตอน</a>
+          </div>
+        </div>
+
+        <div class="hero-card" aria-hidden="true">
+          <div class="window-bar">
+            <span></span><span></span><span></span>
+            <p>hoohoo.app</p>
+          </div>
+          <div class="mock-document demo-preview">
+            <div class="demo-mode proofread-demo">
+              <div class="scan-line"></div>
+              <div class="proofread-image-wrap">
+                <img src="assets/hero-proofread-example.jpg" alt="ตัวอย่างภาพสำหรับตรวจ OCR" />
+                <div class="inline-correction">
+                  <span class="replacement">Google</span>
+                  <span class="strike"></span>
+                </div>
+                <div class="detected-word word-la"><span>ลา</span></div>
+                <div class="detected-word word-free"><span>ฟรี</span></div>
+                <div class="detected-word word-video"><span>วิดีโอพรีเซนต์</span></div>
+              </div>
+              <div class="ocr-chip ocr-chip-top">กำลังสแกนภาพ</div>
+              <div class="correction-panel">
+                <span>คำแนะนำแก้ไข</span>
+                <p>แก้ <mark>Goegle</mark> เป็น <strong>Google</strong> | พบ <strong>ลา</strong>, <strong>ฟรี</strong>, <strong>วิดีโอพรีเซนต์</strong></p>
+              </div>
+              <div class="difference-chip">ตรวจพบ 4 จุดสำคัญ</div>
+            </div>
+
+            <div class="demo-mode compare-demo">
+              <div class="compare-badge">โหมดจับความต่างของภาพ</div>
+              <div class="compare-grid">
+                <div class="compare-shot">
+                  <span>ภาพ A</span>
+                  <img src="assets/compare-example-a.jpg" alt="" />
+                </div>
+                <div class="compare-shot compare-shot-b">
+                  <span>ภาพ B</span>
+                  <img src="assets/hero-proofread-example.jpg" alt="" />
+                  <i class="diff-mark red-underline diff-b-la"></i>
+                  <i class="diff-mark red-underline diff-b-free"></i>
+                  <i class="diff-mark red-underline diff-b-google"></i>
+                  <i class="diff-mark red-underline diff-b-video"></i>
+                </div>
+              </div>
+              <div class="compare-summary">พบความต่าง 4 ตำแหน่ง</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="workspace-section" id="workspace">
+        <div class="section-heading">
+          <p class="eyebrow">เลือกโหมดการตรวจ</p>
+          <h2>ตรวจคำผิดและเปรียบเทียบเอกสารครบจบในที่เดียว</h2>
+        </div>
+
+        <div class="workspace-card">
+          <div class="toolbar">
+            <label for="mode">โหมด</label>
+            <select id="mode" class="mode-select">
+  		<option value="single">📄 ตรวจคำผิดจากภาพ</option>
+  		<option value="compare">🔍 เปรียบเทียบเอกสาร 2 ไฟล์</option>
+  		<option value="text-proofreader">📝 ตรวจคำผิดจากเอกสาร</option>
+		</select>
+          </div>
+
+          <form class="upload-grid" id="uploadGrid">
+            <label class="upload-box" for="fileA">
+              <input
+  		type="file"
+  		id="fileA"
+ 		 accept="image/*,.pdf,.txt,.doc,.docx"
+		/>
+              <span class="upload-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" />
+                  <path d="M14 3v5h5M9 15h6M9 11h3" />
+                </svg>
+              </span>
+              <strong>อัปโหลดไฟล์ A</strong>
+              <small id="fileALabel">เลือกภาพหลักสำหรับ OCR</small>
+              <img id="previewA" class="preview-img" alt="ตัวอย่างไฟล์ A" />
+            </label>
+
+            <label class="upload-box" id="boxB" for="fileB">
+              <input
+  		type="file"
+  		id="fileB"
+  		accept="image/*,.pdf,.txt,.doc,.docx"
+		/>
+              <span class="upload-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M8 7h12M8 12h12M8 17h12" />
+                  <path d="M4 7h.01M4 12h.01M4 17h.01" />
+                </svg>
+              </span>
+              <strong>อัปโหลดไฟล์ B</strong>
+              <small id="fileBLabel">ใช้สำหรับโหมดเทียบข้อความ</small>
+              <img id="previewB" class="preview-img" alt="ตัวอย่างไฟล์ B" />
+            </label>
+          </form>
+
+          <button class="button button-primary submit-button" type="button" onclick="sendToN8N()">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M22 2 11 13" />
+              <path d="m22 2-7 20-4-9-9-4Z" />
+            </svg>
+            ส่งตรวจ
+          </button>
+
+          <div class="result-shell">
+            <div class="result-header">
+              <span>ผลลัพธ์การตรวจ</span>
+              <small id="statusText">รอการอัปโหลด</small>
+            </div>
+            <div id="result" class="result-box"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="pricing-section" id="pricing">
+        <div class="pricing-heading">
+          <p class="eyebrow">Early Access</p>
+          <h2>ใช้ทุกฟีเจอร์ฟรีช่วงเปิดทดลอง</h2>
+          <p>
+            สมัครวันนี้เพื่อทดลองฟีเจอร์ Pro ทั้งหมดฟรี ไม่ต้องใส่บัตรเครดิต
+            ใช้งาน OCR ตรวจคำผิด และเทียบภาพได้ทันที
+          </p>
+        </div>
+
+        <div class="pricing-grid">
+          <article class="pricing-card">
+            <p class="plan-for">สำหรับทดลองใช้งาน</p>
+            <h3>Free</h3>
+            <div class="plan-price">฿0</div>
+            <p class="plan-note">ไม่ต้องใส่บัตรเครดิต</p>
+            <a class="plan-button plan-button-light" href="#workspace">เริ่มใช้ฟรี</a>
+            <ul class="feature-list">
+              <li class="is-included">ตรวจคำผิดภาษาไทยมาตรฐาน</li>
+              <li class="is-included">ใช้งานผ่านหน้าเว็บ HOO HOO</li>
+              <li class="is-included">โควตา OCR 3,000 ตัวอักษร/วัน</li>
+              <li class="is-muted">อัปโหลดไฟล์ .docx ตรวจทั้งเอกสาร</li>
+              <li class="is-muted">Glossary คลังคำศัพท์ส่วนตัว</li>
+            </ul>
+          </article>
+
+          <article class="pricing-card pricing-card-featured">
+            <div class="plan-ribbon">ฟรีช่วง Early Access</div>
+            <p class="plan-for">สำหรับมืออาชีพและทีมเล็ก</p>
+            <h3>Pro</h3>
+            <div class="plan-price-row">
+              <span>฿299/เดือน</span>
+              <strong>฿0</strong>
+            </div>
+            <p class="plan-pill">ใช้ฟรีช่วง Early Access</p>
+            <p class="plan-note">มูลค่า ฿3,588/ปี</p>
+            <a class="plan-button plan-button-primary" href="#workspace">สมัครใช้ฟรี</a>
+            <ul class="feature-list">
+              <li class="is-included">ทุกฟีเจอร์ใน Free</li>
+              <li class="is-included">พิสูจน์อักษรเต็มรูปแบบ 50,000 ตัวอักษร/วัน</li>
+              <li class="is-included">จับความต่างของภาพ 2 ไฟล์</li>
+              <li class="is-included">โควตาแปลภาษา 15,000 ตัวอักษร/วัน</li>
+              <li class="is-included">Glossary คลังคำศัพท์ส่วนตัว</li>
+              <li class="is-included">ประวัติการใช้งานย้อนหลัง 30 วัน</li>
+            </ul>
+          </article>
+
+          <article class="pricing-card">
+            <p class="plan-for">สำหรับสำนักงานและองค์กร</p>
+            <h3>Enterprise</h3>
+            <div class="plan-price plan-price-text">ติดต่อทีมงาน</div>
+            <p class="plan-note">ราคาขึ้นอยู่กับจำนวนสมาชิก</p>
+            <a class="plan-button plan-button-dark" href="mailto:hello@hoohoo.app">นัดหมายกับทีมงาน</a>
+            <p class="plan-extra">ทดลองใช้ฟีเจอร์ Pro ฟรีก่อนได้เลย</p>
+            <ul class="feature-list">
+              <li class="is-included">ทุกฟีเจอร์ใน Pro</li>
+              <li class="is-included">จำนวนสมาชิกไม่จำกัด</li>
+              <li class="is-included">โควตาแบบ Custom</li>
+              <li class="is-included">Priority Support</li>
+              <li class="is-included">SSO และควบคุมสิทธิ์ตามบทบาท</li>
+              <li class="is-included">ประวัติการใช้งานย้อนหลัง 90 วัน</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="steps-section" id="how-it-works">
+        <div class="section-heading">
+          <p class="eyebrow">ขั้นตอนการทำงาน</p>
+          <h2>ตรวจข้อความได้ง่าย รวดเร็ว และแม่นยำ</h2>
+        </div>
+        <div class="steps-grid">
+          <article>
+            <span class="step-number">1</span>
+            <div class="step-icon" aria-hidden="true">
+              <svg viewBox="-8 -8 112 112" fill="none">
+                <path d="M27 14h30l16 16v50a6 6 0 0 1-6 6H27a6 6 0 0 1-6-6V20a6 6 0 0 1 6-6Z" stroke="currentColor" stroke-width="6" stroke-linejoin="round"/>
+                <path d="M57 15v21h17" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M34 45h24M34 58h21M34 71h18" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+                <circle cx="70" cy="69" r="18" fill="#00BFB3"/>
+                <path d="m61 69 7 7 13-16" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <h3>เลือกโหมด</h3>
+            <p>ใช้โหมดเดียวสำหรับ OCR + ตรวจคำผิด หรือโหมด compare เมื่อต้องเทียบภาพ 2 ไฟล์</p>
+          </article>
+          <article>
+            <span class="step-number">2</span>
+            <div class="step-icon" aria-hidden="true">
+              <svg viewBox="-8 -8 112 112" fill="none">
+                <path d="M30 74H24a18 18 0 0 1-2-36 26 26 0 0 1 51-6 22 22 0 0 1 1 44h-8" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M48 76V44M35 57l13-13 13 13" stroke="#00BFB3" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <h3>อัปโหลดไฟล์</h3>
+            <p>ระบบแสดง preview รูปทันที เพื่อให้เช็กได้ว่าเลือกไฟล์ถูกก่อนส่งตรวจ</p>
+          </article>
+          <article>
+            <span class="step-number">3</span>
+            <div class="step-icon" aria-hidden="true">
+              <svg viewBox="-8 -8 112 112" fill="none">
+                <path d="M32 16h36a6 6 0 0 1 6 6v54a6 6 0 0 1-6 6H32a6 6 0 0 1-6-6V22a6 6 0 0 1 6-6Z" stroke="currentColor" stroke-width="6" stroke-linejoin="round"/>
+                <path d="M40 16h20l2 9H38l2-9Z" fill="#fff" stroke="currentColor" stroke-width="6" stroke-linejoin="round"/>
+                <path d="m36 42 5 5 9-11M57 43h12M36 61l5 5 9-11M57 62h6" stroke="#00BFB3" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="70" cy="67" r="15" fill="#fff" stroke="#00BFB3" stroke-width="6"/>
+                <path d="m81 78 10 10" stroke="#00BFB3" stroke-width="7" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <h3>ดูผลตรวจ</h3>
+            <p>ระบบประมวลผลภาพและแสดงคำที่ควรแก้ พร้อมคำแนะนำที่อ่านง่าย</p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>HOO HOO prototype for Thai document checking.</p>
+    </footer>
+    </div>
+
+    <div class="chatbot-widget" id="chatbotWidget">
+  <button class="chatbot-toggle" 
+          id="chatbotToggle" 
+          type="button" 
+          aria-expanded="false" 
+          aria-controls="chatbotPanel" 
+          aria-label="เปิดแชท HOO HOO">
+    <img src="assets/hooq-chat.gif" alt="HOO HOO">
+    <span>ถามฮูกฮูก</span>
+  </button>
+
+      <section class="chatbot-panel" id="chatbotPanel" aria-label="แชทบอท HOO HOO">
+  <div class="chatbot-head">
+
+    <img
+  src="assets/hooq-chat.gif"
+  alt="HOO HOO"
+  class="chatbot-head-icon"
+    />
+
+    <div>
+      <strong>HOO HOO</strong>
+      <span>Always Ready to Help</span>
+    </div>
+
+    <button
+      class="chatbot-close"
+      id="chatbotClose"
+      type="button"
+      aria-label="ปิดแชท"
+    >
+      x
+    </button>
+
+  </div>
+
+<div class="chatbot-messages" id="chatbotMessages">
+  <div class="chat-message bot">
+    สวัสดีครับ ถามเรื่องอัปโหลดไฟล์ โหมดตรวจ การดูผล หรือแพ็กเกจได้เลยครับ
+  </div>
+</div>
+
+<form class="chatbot-form" id="chatbotForm">
+  <input
+    id="chatbotInput"
+    type="text"
+    autocomplete="off"
+    placeholder="พิมพ์คำถาม..."
+  />
+  <button type="submit" aria-label="ส่งข้อความ">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m4 12 16-7-7 16-2-7-7-2Z" />
+    </svg>
+  </button>
+</form>
+
+      </section>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
