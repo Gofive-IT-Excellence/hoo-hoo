@@ -1,5 +1,5 @@
 const OCR_ENDPOINT =
-"https://n8n.tks.co.th/webhook-test/hoo-hoo-ocr";
+"https://n8n.tks.co.th/webhook/hoo-hoo-ocr";
 
 const TEXT_ENDPOINT =
 "https://ruined-gender-untimely.ngrok-free.dev/webhook/text-proofreader";
