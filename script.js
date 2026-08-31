@@ -8,7 +8,7 @@ const HOOHOO_CHAT_ENDPOINT =
 "https://ruined-gender-untimely.ngrok-free.dev/webhook/hoohoo-chat";
 
 const OCR_COMPARE_ENDPOINT =
-"https://ruined-gender-untimely.ngrok-free.dev/webhook/thai-ocr-compare";
+"https://n8n.tks.co.th/webhook/thai-ocr-compare";
 
 const modeSelect = document.getElementById("mode");
 const boxB = document.getElementById("boxB");
