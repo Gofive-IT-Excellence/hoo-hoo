@@ -10,6 +10,8 @@ const HOOHOO_CHAT_ENDPOINT =
 const OCR_COMPARE_ENDPOINT =
 "https://n8n.tks.co.th/webhook/thai-ocr-compare";
 
+let pdfJsPromise;
+
 const modeSelect = document.getElementById("mode");
 const boxB = document.getElementById("boxB");
 const fileAInput = document.getElementById("fileA");
@@ -225,6 +227,81 @@ function isDocumentFile(file) {
   );
 }
 
+function isPdfFile(file) {
+  const name = String(file?.name || "").toLowerCase();
+  const type = String(file?.type || "").toLowerCase();
+  return name.endsWith(".pdf") || type.includes("pdf");
+}
+
+async function loadPdfJs() {
+  if (!pdfJsPromise) {
+    pdfJsPromise = import("./vendor/pdfjs/pdf.mjs").then((pdfjs) => {
+      pdfjs.GlobalWorkerOptions.workerSrc = "./vendor/pdfjs/pdf.worker.mjs";
+      return pdfjs;
+    });
+  }
+  return pdfJsPromise;
+}
+
+async function pdfToPngFile(file) {
+  const pdfjs = await loadPdfJs();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+  const pages = [];
+  const gap = 24;
+
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const baseViewport = page.getViewport({ scale: 1 });
+  // PDF pages often contain Thai body text that becomes too small for OCR at
+  // the old ~1,000 px render width. Render PDFs at a higher resolution while
+  // keeping ordinary image uploads unchanged.
+  // 1,800 px is the stable middle ground for Surya/Datalab: it preserves
+  // small Thai glyphs without triggering the model's empty <div><img/></div>
+  // response seen with oversized pages.
+  const scale = Math.min(4, 1800 / Math.max(baseViewport.width, 1));
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    const context = canvas.getContext("2d", { alpha: false });
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: context, viewport }).promise;
+    pages.push(canvas);
+  }
+
+  const width = Math.max(...pages.map((page) => page.width));
+  const height = pages.reduce((sum, page) => sum + page.height, 0)
+    + gap * Math.max(0, pages.length - 1);
+  if (height > 32000) {
+    throw new Error("PDF มีจำนวนหน้ามากเกินกว่าที่จะแปลงเป็นภาพเดียว กรุณาแบ่งไฟล์ก่อนส่งตรวจ");
+  }
+
+  const combined = document.createElement("canvas");
+  combined.width = width;
+  combined.height = height;
+  const combinedContext = combined.getContext("2d", { alpha: false });
+  combinedContext.fillStyle = "#ffffff";
+  combinedContext.fillRect(0, 0, width, height);
+
+  let y = 0;
+  for (const page of pages) {
+    const x = Math.floor((width - page.width) / 2);
+    combinedContext.drawImage(page, x, y);
+    y += page.height + gap;
+  }
+
+  const blob = await new Promise((resolve, reject) => {
+    combined.toBlob(
+      (value) => value ? resolve(value) : reject(new Error("ไม่สามารถแปลง PDF เป็น PNG ได้")),
+      "image/png"
+    );
+  });
+  const outputName = file.name.replace(/\.pdf$/i, "") + "-pages.png";
+  return new File([blob], outputName, { type: "image/png" });
+}
+
 async function sendToN8N() {
   const fileA = fileAInput.files[0];
   const fileB = fileBInput.files[0];
@@ -246,19 +323,27 @@ async function sendToN8N() {
     return;
   }
 
-  const form = new FormData();
-  form.append("mode", effectiveMode);
-  form.append("fileA", fileA);
-
-  if (mode === "compare") {
-    form.append("fileB", fileB);
-  }
-
   showCheckingState();
   resultBox.classList.remove("has-result");
   statusText.textContent = "กำลังประมวลผล";
 
   try {
+    let uploadFileA = fileA;
+    let uploadFileB = fileB;
+
+    if (mode === "compare" && (isPdfFile(fileA) || isPdfFile(fileB))) {
+      statusText.textContent = "กำลังแปลง PDF เป็นภาพสำหรับ Datalab";
+      [uploadFileA, uploadFileB] = await Promise.all([
+        isPdfFile(fileA) ? pdfToPngFile(fileA) : Promise.resolve(fileA),
+        isPdfFile(fileB) ? pdfToPngFile(fileB) : Promise.resolve(fileB),
+      ]);
+    }
+
+    const form = new FormData();
+    form.append("mode", effectiveMode);
+    form.append("fileA", uploadFileA);
+    if (mode === "compare") form.append("fileB", uploadFileB);
+
     const endpoint =
      effectiveMode === "compare"
        ? OCR_COMPARE_ENDPOINT
