@@ -728,7 +728,20 @@ function normalizeChatRequest(message) {
   const isSpellingQuestion =
     /(สอนเขียน|เขียน|สะกด|ถูกไหม|ถูกหรือไม่|คำที่ถูก|แก้เป็น)/u.test(normalized);
 
-  if (!isSpellingQuestion || isMeaningQuestion) return normalized;
+  if (isMeaningQuestion) {
+    const meaningTarget = normalized
+      .replace(/^(?:ช่วย)?\s*(?:คำว่า|คำ)?\s*/u, "")
+      .split(/(?:ใช่|ใช้)(?:ไหม|หรือ|หรอ)?|เขียน|สะกด|ความหมาย|หมายความ|แปลว่า|คืออะไร/u)[0]
+      .replace(/[\s?!。.]+$/u, "")
+      .trim();
+
+    // บังคับให้ Router เข้าโหมดอธิบายคำ ไม่หลงไปตอบคำสั่งในประโยค
+    return meaningTarget
+      ? `คำว่า ${meaningTarget} เขียนอย่างไร และหมายความว่าอะไร`
+      : normalized;
+  }
+
+  if (!isSpellingQuestion) return normalized;
 
   const target = normalized
     .replace(/^(?:ช่วย)?\s*(?:คำว่า|คำ)?\s*/u, "")
@@ -780,7 +793,11 @@ let answer = raw;
 
 try {
   const data = JSON.parse(raw);
-  answer = data.text || data.reply || data.html || raw;
+  if (data.message === "Workflow execution failed") {
+    answer = "ขออภัยค่ะ ระบบประมวลผลไม่สำเร็จ กรุณาลองส่งคำถามอีกครั้ง";
+  } else {
+    answer = data.text || data.reply || data.html || data.message || raw;
+  }
 } catch (e) {
   answer = raw;
 }
