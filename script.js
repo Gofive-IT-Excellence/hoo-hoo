@@ -721,6 +721,26 @@ const chatbotForm = document.getElementById("chatbotForm");
 const chatbotInput = document.getElementById("chatbotInput");
 const chatbotMessages = document.getElementById("chatbotMessages");
 
+function normalizeChatRequest(message) {
+  const normalized = String(message || "").normalize("NFC").trim();
+  const isMeaningQuestion =
+    /(หมายความว่า|ความหมาย|แปลว่าอะไร|นิยาม)/u.test(normalized);
+  const isSpellingQuestion =
+    /(สอนเขียน|เขียน|สะกด|ถูกไหม|ถูกหรือไม่|คำที่ถูก|แก้เป็น)/u.test(normalized);
+
+  if (!isSpellingQuestion || isMeaningQuestion) return normalized;
+
+  const target = normalized
+    .replace(/^(?:ช่วย)?\s*(?:คำว่า|คำ)?\s*/u, "")
+    .replace(/^(?:ช่วย)?\s*(?:เขียน|สะกด)\s*/u, "")
+    .replace(/(?:สอน)?(?:เขียน|สะกด)(?:ว่า|ยังไง|อย่างไร|ไง)?[\s?!。.]*$/u, "")
+    .replace(/(?:ถูกไหม|ถูกหรือไม่|คำที่ถูก|แก้เป็น).*$/u, "")
+    .trim();
+
+  // ส่งรูปแบบเดียวให้ Workflow เพื่อไม่ให้โมเดลหยิบคำสั่ง เช่น "สอน/เขียน/ไง" มาตอบ
+  return target ? `${target} เขียนอย่างไร` : normalized;
+}
+
 
 
 chatbotForm.addEventListener("submit", async (e) => {
@@ -750,7 +770,7 @@ try {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        message: message
+        message: normalizeChatRequest(message)
       })
     });
 
