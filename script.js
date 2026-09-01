@@ -5,7 +5,7 @@ const TEXT_ENDPOINT =
 "https://n8n.tks.co.th/webhook/text-proofreader";
 
 const HOOHOO_CHAT_ENDPOINT =
-"https://ruined-gender-untimely.ngrok-free.dev/webhook/hoohoo-chat";
+"https://n8n.tks.co.th/webhook/hoohoo-chat";
 
 const OCR_COMPARE_ENDPOINT =
 "https://n8n.tks.co.th/webhook/thai-ocr-compare";
