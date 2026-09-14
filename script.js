@@ -302,7 +302,9 @@ async function pdfToPngFile(file) {
   return new File([blob], outputName, { type: "image/png" });
 }
 
+let comparisonBusy = false;
 async function sendToN8N() {
+  if (comparisonBusy) return;
   const fileA = fileAInput.files[0];
   const fileB = fileBInput.files[0];
   const mode = modeSelect.value;
@@ -328,6 +330,16 @@ async function sendToN8N() {
   statusText.textContent = "กำลังประมวลผล";
 
   try {
+    if (mode === 'compare') {
+      comparisonBusy = true;
+      const result = await HooHooCompare.compare(fileA, fileB, message => {
+        statusText.textContent = message;
+      });
+      resultBox.classList.remove('is-loading');
+      renderResultHtml(HooHooCompare.render(result));
+      statusText.textContent = result.uncertain.length ? 'ตรวจเสร็จ — มีรายการต้องตรวจเพิ่มเติม' : 'ตรวจเสร็จแล้ว';
+      return;
+    }
     let uploadFileA = fileA;
     let uploadFileB = fileB;
 
@@ -388,8 +400,10 @@ ${JSON.stringify(json, null, 2)}
     }
   } catch (error) {
     resultBox.classList.remove("is-loading");
-    resultBox.innerHTML = `ERROR:\n${error}`;
+    resultBox.textContent = `ERROR:\n${error}`;
     statusText.textContent = "ประมวลผลไม่สำเร็จ";
+  } finally {
+    comparisonBusy = false;
   }
 }
 

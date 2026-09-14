@@ -192,7 +192,7 @@
             <label for="mode">โหมด</label>
             <select id="mode" class="mode-select">
   		<option value="single">📄 ตรวจคำผิดจากภาพ</option>
-  		<option value="compare">🔍 เปรียบเทียบเอกสาร 2 ไฟล์</option>
+        <option value="compare">🔍 เปรียบเทียบ 2 ไฟล์ — รุ่นใหม่ หน้าเดียว ขนาดตรงกัน</option>
   		<option value="text-proofreader">📝 ตรวจคำผิดจากเอกสาร</option>
 		</select>
           </div>
@@ -430,6 +430,8 @@
       </section>
     </div>
 
-    <script src="script.js?v=20260831-pdf-datalab-4"></script>
+    <script src="vendor/tesseract/tesseract.min.js"></script>
+    <script src="compare-browser.js?v=20260914-1"></script>
+    <script src="script.js?v=20260914-compare-1"></script>
   </body>
 </html>
