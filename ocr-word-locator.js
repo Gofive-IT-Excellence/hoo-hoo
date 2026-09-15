@@ -89,22 +89,34 @@
       if(!match.box){
         const note=doc.createElement('span');note.textContent=' — ยังยืนยันตำแหน่งไม่ได้';li.append(note);unlocated++;continue;
       }
-      const [x,y,r,b]=match.box,line=doc.createElement('div'),label=doc.createElement('div');
-      line.className='ocr-fix-line';label.className='ocr-fix-text';
-      line.style.left=label.style.left=x/ocr.width*100+'%';line.style.top=b/ocr.height*100+'%';line.style.width=(r-x)/ocr.width*100+'%';
-      label.style.top=y/ocr.height*100+'%';label.textContent='ตรวจทาน: '+corrected;
-      line.title=label.title=original+' → '+corrected;
-      line.dataset.location='native-ocr-symbols';line.dataset.bbox=JSON.stringify(match.box);
-      wrapper.append(line,label);located++;
+      // A matching OCR location is not evidence of a spelling error.
+      // Keep the candidate off the original image until semantic verification exists.
+      located++;
     }
     const count=panel.querySelectorAll('li').length;
     const heading=panel.querySelector('h3');if(heading)heading.textContent='คำแนะนำที่ต้องตรวจทาน ('+count+')';
     const notice=doc.createElement('p');notice.textContent='พิกัด OCR ไม่ใช่การยืนยันว่าคำนั้นผิด คำแนะนำทั้งหมดต้องตรวจเทียบภาพต้นฉบับ ระบบไม่ได้แก้ไขไฟล์ และอาจตรวจคำผิดได้ไม่ครบ';panel.prepend(notice);
-    const status=panel.querySelector('.location-status');if(status)status.textContent='แสดงตำแหน่ง '+located+' จาก '+count+' รายการ'+(unlocated?' · อีก '+unlocated+' รายการต้องตรวจภาพเพิ่มเติม':'');
-    const version=panel.querySelector('.audit-version');if(version)version.textContent='พิกัดคำ OCR ที่ผ่านการคัดกรอง · word-review-2';
+    const status=panel.querySelector('.location-status');if(status)status.textContent='ไม่ทำเครื่องหมายคำผิดบนต้นฉบับ: '+count+' รายการยังไม่ผ่านการยืนยัน';
+    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · review-only-3';
+    collapseReview(doc,panel);
     return {html:'<!doctype html>'+doc.documentElement.outerHTML,located,unlocated,reviewCount:count};
   }
-  const api={lines,locate,read,reanchor};
+  function collapseReview(doc,panel){
+    const details=doc.createElement('details'),summary=doc.createElement('summary');
+    summary.textContent='รายการที่ยังไม่ยืนยัน — เปิดเพื่อตรวจทาน (ไม่ใช่คำผิดที่ยืนยันแล้ว)';
+    panel.replaceWith(details);details.append(summary,panel);
+  }
+  function preserveOriginal(html){
+    const doc=new DOMParser().parseFromString(html,'text/html');
+    doc.querySelectorAll('mark.wrong-word').forEach(n=>n.replaceWith(doc.createTextNode(n.textContent)));
+    const style=doc.createElement('style');
+    style.textContent='.pdf-red-mark{display:none!important}';doc.head.append(style);
+    const panel=doc.querySelector('.correction-panel');if(panel)collapseReview(doc,panel);
+    const summary=doc.querySelector('.summary-box');
+    if(summary)summary.textContent='ยังไม่มีคำผิดที่ยืนยันแล้ว — มีรายการให้ตรวจทาน ไม่ได้แก้ต้นฉบับ';
+    return '<!doctype html>'+doc.documentElement.outerHTML;
+  }
+  const api={lines,locate,read,reanchor,preserveOriginal};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   else root.HooHooWordLocator=api;
 })(typeof window==='undefined'?globalThis:window);

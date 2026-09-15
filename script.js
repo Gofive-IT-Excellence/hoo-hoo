@@ -395,6 +395,8 @@ const response = await fetch(endpoint, {
         const checked = HooHooWordLocator.reanchor(html, ocr);
         finalHtml = checked.html;
         needsReview = checked.reviewCount > 0;
+      } else if (effectiveMode === 'single') {
+        finalHtml = HooHooWordLocator.preserveOriginal(html);
       }
       resultBox.classList.remove("is-loading");
       renderResultHtml(finalHtml);
