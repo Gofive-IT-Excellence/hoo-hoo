@@ -67,21 +67,33 @@
   async function compare(fileA,fileB,progress=()=>{}){
     const a=await page(fileA),b=await page(fileB),rows=candidates(a,b),changes=[],uncertain=[],readings=[];
     if(rows.length>100)throw Error('พบความต่างของรูปแบบจำนวนมาก รุ่นนี้ยังเทียบอย่างน่าเชื่อถือไม่ได้');
-    let worker;
+    let worker,detailWorker;
     const isPDF=/\.pdf$/i.test(fileA.name)||/\.pdf$/i.test(fileB.name);
     try{
       if(rows.length){
         const base=new URL('vendor/tesseract/',document.baseURI).href;
         worker=await Tesseract.createWorker(isPDF?'tha+eng':'tha',1,{workerPath:base+'worker.min.js',corePath:base+'core',langPath:base+'lang',gzip:false});
-        async function read(c,box,scale,psm){
+        async function read(c,box,scale,psm,reader=worker){
           const [x,y,r,t]=box,pad=30,s=canvas(Math.round((r-x)*scale)+pad*2,Math.round((t-y)*scale)+pad*2),ctx=s.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,s.width,s.height);ctx.drawImage(c,x,y,r-x,t-y,pad,pad,s.width-pad*2,s.height-pad*2);
-          await worker.setParameters({tessedit_pageseg_mode:String(psm)});
-          const {data}=await worker.recognize(s,{}, {text:true,blocks:true});s.width=s.height=0;return symbols(data,scale,x,y,pad);
+          await reader.setParameters({tessedit_pageseg_mode:String(psm)});
+          const {data}=await reader.recognize(s,{}, {text:true,blocks:true});s.width=s.height=0;const ss=symbols(data,scale,x,y,pad);ss.raw=(data.text||'').trim();return ss;
         }
         let full=null;if(!isPDF)full=[await read(a,[0,0,a.width,a.height],.5,11),await read(b,[0,0,b.width,b.height],.5,11)];
         for(let index=0;index<rows.length;index++){
           progress(`กำลังเทียบข้อความ ${index+1}/${rows.length}`);
           const r=rows[index],box=[0,Math.max(0,r[1]-7),a.width,Math.min(a.height,r[3]+7)];
+          // An isolated region erased to white is evidence of deletion even
+          // when OCR misses a single digit or an English phrase. Test the
+          // changed region, not the whole row containing unrelated columns.
+          const local=[Math.max(0,r[0]-2),Math.max(0,r[1]-2),Math.min(a.width,r[2]+2),Math.min(a.height,r[3]+2)];
+          const emptyA=blank(a,local),emptyB=blank(b,local);
+          if(!isPDF&&emptyA!==emptyB){
+            detailWorker??=await Tesseract.createWorker('tha+eng',1,{workerPath:base+'worker.min.js',corePath:base+'core',langPath:base+'lang',gzip:false});
+            const source=emptyB?a:b,ss=await read(source,local,3,7,detailWorker);
+            const label=ss.raw||'(อ่านข้อความไม่ออก — พบความต่างจากภาพ)';
+            changes.push({before:emptyB?label:'',after:emptyA?label:'',type:emptyB?'delete':'insert',boxB:tight(source,r),evidence:'visual-blank-region'});
+            continue;
+          }
           const pick=ss=>ss.filter(s=>Math.min(s.box[3],box[3])-Math.max(s.box[1],box[1])>.3*Math.min(s.box[3]-s.box[1],box[3]-box[1]));
           let aa=full?pick(full[0]):await read(a,box,3,7),bb=full?pick(full[1]):await read(b,box,3,7);
           const ba=blank(a,box),bbk=blank(b,box);if(ba)aa=[];if(bbk)bb=[];
@@ -101,13 +113,13 @@
           }
         }
       }
-      return {version:'compare-browser-1',width:b.width,height:b.height,changes,uncertain,readings,imageA:a.toDataURL('image/png'),imageB:b.toDataURL('image/png')};
-    }finally{if(worker)await worker.terminate();a.width=a.height=b.width=b.height=0;}
+      return {version:'compare-browser-2',width:b.width,height:b.height,changes,uncertain,readings,imageA:a.toDataURL('image/png'),imageB:b.toDataURL('image/png')};
+    }finally{if(worker)await worker.terminate();if(detailWorker)await detailWorker.terminate();a.width=a.height=b.width=b.height=0;}
   }
   function render(result){
     const {width:w,height:h,changes,uncertain}=result;
     const boxes=changes.map((c,i)=>{const [x,y,r,t]=c.boxB;return `<rect x="${x-2}" y="${y-2}" width="${r-x+4}" height="${t-y+4}" fill="none" stroke="#ee2222" stroke-width="3"/><text x="${x}" y="${Math.max(14,y-6)}" fill="#c00000" font-size="16">${i+1}</text>`;}).join('');
-    return `<div style="font:16px system-ui"><h3>ผลเปรียบเทียบ: วงตำแหน่งในไฟล์ B (${changes.length})</h3><p>ข้อความหาย: วงช่องว่างใน B อ้างตำแหน่งจาก A · ผล OCR ควรตรวจเทียบต้นฉบับ</p><svg viewBox="0 0 ${w} ${h}" style="width:100%"><image href="${result.imageB}" width="${w}" height="${h}"/>${boxes}</svg><ol>${changes.map(c=>`<li>${esc(c.before||'(ไม่มีข้อความ)')} → ${esc(c.after||'(ข้อความหาย)')}</li>`).join('')}</ol><p>${uncertain.length?'ยังมี '+uncertain.length+' รายการที่อ่านไม่แน่ใจ ไม่ใช่ผลยืนยันว่าเอกสารเหมือนกัน':changes.length?'ตรวจพบข้อความเปลี่ยน':'ไม่พบความต่างภายใต้เกณฑ์การตรวจรุ่นนี้'}</p><details><summary>รายการที่ต้องตรวจเพิ่มเติม (${uncertain.length})</summary><pre style="white-space:pre-wrap">${esc(JSON.stringify(uncertain,null,2))}</pre></details><details><summary>ดูไฟล์ A ต้นฉบับ</summary><img src="${result.imageA}" style="width:100%"></details><small>compare-browser-1 · ตรวจในเบราว์เซอร์ · รองรับหน้าเดียวขนาดตรงกัน</small></div>`;
+    return `<div style="font:16px system-ui"><h3>ผลเปรียบเทียบ: วงตำแหน่งในไฟล์ B (${changes.length})</h3><p>ข้อความหาย: วงช่องว่างใน B อ้างตำแหน่งจาก A · ผล OCR ควรตรวจเทียบต้นฉบับ</p><svg viewBox="0 0 ${w} ${h}" style="width:100%"><image href="${result.imageB}" width="${w}" height="${h}"/>${boxes}</svg><ol>${changes.map(c=>`<li>${esc(c.before||'(ไม่มีข้อความ)')} → ${esc(c.after||'(ข้อความหาย)')}</li>`).join('')}</ol><p>${uncertain.length?'ยังมี '+uncertain.length+' รายการที่อ่านไม่แน่ใจ ไม่ใช่ผลยืนยันว่าเอกสารเหมือนกัน':changes.length?'ตรวจพบข้อความเปลี่ยน':'ไม่พบความต่างภายใต้เกณฑ์การตรวจรุ่นนี้'}</p><details><summary>รายการที่ต้องตรวจเพิ่มเติม (${uncertain.length})</summary><pre style="white-space:pre-wrap">${esc(JSON.stringify(uncertain,null,2))}</pre></details><details><summary>ดูไฟล์ A ต้นฉบับ</summary><img src="${result.imageA}" style="width:100%"></details><small>compare-browser-2 · ตรวจในเบราว์เซอร์ · รองรับหน้าเดียวขนาดตรงกัน</small></div>`;
   }
   root.HooHooCompare={compare,render,candidates,edits};
 })(window);
