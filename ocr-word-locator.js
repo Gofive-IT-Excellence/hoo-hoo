@@ -24,12 +24,22 @@
     if(!word)return {reason:'empty'};
     const hits=[];
     for(const row of rows){
+      if(!Number.isFinite(row.confidence)||row.confidence<80)continue;
+      const boundaries=new Set([0,row.text.length]);
+      if(typeof Intl.Segmenter!=='function')continue;
+      for(const part of new Intl.Segmenter('th',{granularity:'word'}).segment(row.text)){
+        boundaries.add(part.index);boundaries.add(part.index+part.segment.length);
+      }
+      for(let i=1;i<row.text.length;i++){
+        if(/[\u0E00-\u0E7F]/.test(row.text[i-1])&&/[A-Za-z0-9]/.test(row.text[i])||
+           /[A-Za-z0-9]/.test(row.text[i-1])&&/[\u0E00-\u0E7F]/.test(row.text[i]))boundaries.add(i);
+      }
       let from=0,at;
       while((at=row.text.indexOf(word,from))!==-1){
         const end=at+word.length,gs=row.glyphs.filter(g=>g.end>at&&g.start<end);
         // Partial glyphs and combining marks belonging to the next character
         // cannot be treated as reliable word boundaries.
-        if(gs.length&&gs[0].start===at&&gs.at(-1).end===end&&
+        if(boundaries.has(at)&&boundaries.has(end)&&gs.length&&gs[0].start===at&&gs.at(-1).end===end&&
             !/^[\p{M}]/u.test(row.text.slice(end))){
           hits.push({box:union(gs.map(g=>g.box)),line:row.text});
         }
@@ -82,16 +92,17 @@
       const [x,y,r,b]=match.box,line=doc.createElement('div'),label=doc.createElement('div');
       line.className='ocr-fix-line';label.className='ocr-fix-text';
       line.style.left=label.style.left=x/ocr.width*100+'%';line.style.top=b/ocr.height*100+'%';line.style.width=(r-x)/ocr.width*100+'%';
-      label.style.top=y/ocr.height*100+'%';label.textContent=corrected;
+      label.style.top=y/ocr.height*100+'%';label.textContent='ตรวจทาน: '+corrected;
       line.title=label.title=original+' → '+corrected;
       line.dataset.location='native-ocr-symbols';line.dataset.bbox=JSON.stringify(match.box);
       wrapper.append(line,label);located++;
     }
     const count=panel.querySelectorAll('li').length;
-    const heading=panel.querySelector('h3');if(heading)heading.textContent='คำแนะนำแก้ไข ('+count+')';
+    const heading=panel.querySelector('h3');if(heading)heading.textContent='คำแนะนำที่ต้องตรวจทาน ('+count+')';
+    const notice=doc.createElement('p');notice.textContent='พิกัด OCR ไม่ใช่การยืนยันว่าคำนั้นผิด คำแนะนำทั้งหมดต้องตรวจเทียบภาพต้นฉบับ ระบบไม่ได้แก้ไขไฟล์ และอาจตรวจคำผิดได้ไม่ครบ';panel.prepend(notice);
     const status=panel.querySelector('.location-status');if(status)status.textContent='แสดงตำแหน่ง '+located+' จาก '+count+' รายการ'+(unlocated?' · อีก '+unlocated+' รายการต้องตรวจภาพเพิ่มเติม':'');
-    const version=panel.querySelector('.audit-version');if(version)version.textContent='พิกัดตัวอักษรจากภาพจริง · word-position-1';
-    return {html:'<!doctype html>'+doc.documentElement.outerHTML,located,unlocated};
+    const version=panel.querySelector('.audit-version');if(version)version.textContent='พิกัดคำ OCR ที่ผ่านการคัดกรอง · word-review-2';
+    return {html:'<!doctype html>'+doc.documentElement.outerHTML,located,unlocated,reviewCount:count};
   }
   const api={lines,locate,read,reanchor};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
