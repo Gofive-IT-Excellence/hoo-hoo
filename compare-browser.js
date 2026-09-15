@@ -109,17 +109,29 @@
             // OCR boxes can overlap the following unchanged glyph. Never let
             // an inserted/replaced span extend into that neighbouring word.
             if(isPDF&&boxB&&bb[l]&&bb[l].box[0]>display[0])display[2]=Math.min(display[2],bb[l].box[0]);
-            changes.push({before,after,type:!ac.length?'insert':!bc.length?'delete':'replace',boxB:display});
+            let contextA='';
+            // A diff beginning with a Thai combining mark is not a word.
+            // Re-read surrounding source pixels instead of presenting that
+            // fragment as a correction. Do not substitute a dictionary word.
+            if(!isPDF&&/^[\p{M}]/u.test(before)){
+              const anchor=union([r,...ac.map(c=>c.box),...bc.map(c=>c.box)]),height=anchor[3]-anchor[1];
+              const context=[Math.max(0,anchor[0]-3*height),Math.max(0,anchor[1]-8),Math.min(a.width,anchor[2]+height),Math.min(a.height,anchor[3]+8)];
+              detailWorker??=await Tesseract.createWorker('tha+eng',1,{workerPath:base+'worker.min.js',corePath:base+'core',langPath:base+'lang',gzip:false});
+              const reread=await read(a,context,1,7,detailWorker);
+              contextA=reread.raw;
+            }
+            changes.push({before,after,contextA,type:!ac.length?'insert':!bc.length?'delete':'replace',boxB:display});
           }
         }
       }
-      return {version:'compare-browser-2',width:b.width,height:b.height,changes,uncertain,readings,imageA:a.toDataURL('image/png'),imageB:b.toDataURL('image/png')};
+      return {version:'compare-browser-3',width:b.width,height:b.height,changes,uncertain,readings,imageA:a.toDataURL('image/png'),imageB:b.toDataURL('image/png')};
     }finally{if(worker)await worker.terminate();if(detailWorker)await detailWorker.terminate();a.width=a.height=b.width=b.height=0;}
   }
   function render(result){
     const {width:w,height:h,changes,uncertain}=result;
+    const description=c=>c.contextA?`ข้อความต้นฉบับ A: ${esc(c.contextA)} — B มีอักขระเปลี่ยนหรือหาย (ดูตำแหน่งวง)`:`${esc(c.before||'(ไม่มีข้อความ)')} → ${esc(c.after||'(ข้อความหาย)')}`;
     const boxes=changes.map((c,i)=>{const [x,y,r,t]=c.boxB;return `<rect x="${x-2}" y="${y-2}" width="${r-x+4}" height="${t-y+4}" fill="none" stroke="#ee2222" stroke-width="3"/><text x="${x}" y="${Math.max(14,y-6)}" fill="#c00000" font-size="16">${i+1}</text>`;}).join('');
-    return `<div style="font:16px system-ui"><h3>ผลเปรียบเทียบ: วงตำแหน่งในไฟล์ B (${changes.length})</h3><p>ข้อความหาย: วงช่องว่างใน B อ้างตำแหน่งจาก A · ผล OCR ควรตรวจเทียบต้นฉบับ</p><svg viewBox="0 0 ${w} ${h}" style="width:100%"><image href="${result.imageB}" width="${w}" height="${h}"/>${boxes}</svg><ol>${changes.map(c=>`<li>${esc(c.before||'(ไม่มีข้อความ)')} → ${esc(c.after||'(ข้อความหาย)')}</li>`).join('')}</ol><p>${uncertain.length?'ยังมี '+uncertain.length+' รายการที่อ่านไม่แน่ใจ ไม่ใช่ผลยืนยันว่าเอกสารเหมือนกัน':changes.length?'ตรวจพบข้อความเปลี่ยน':'ไม่พบความต่างภายใต้เกณฑ์การตรวจรุ่นนี้'}</p><details><summary>รายการที่ต้องตรวจเพิ่มเติม (${uncertain.length})</summary><pre style="white-space:pre-wrap">${esc(JSON.stringify(uncertain,null,2))}</pre></details><details><summary>ดูไฟล์ A ต้นฉบับ</summary><img src="${result.imageA}" style="width:100%"></details><small>compare-browser-2 · ตรวจในเบราว์เซอร์ · รองรับหน้าเดียวขนาดตรงกัน</small></div>`;
+    return `<div style="font:16px system-ui"><h3>ผลเปรียบเทียบ: วงตำแหน่งในไฟล์ B (${changes.length})</h3><p>ข้อความหาย: วงช่องว่างใน B อ้างตำแหน่งจาก A · ผล OCR ควรตรวจเทียบต้นฉบับ</p><svg viewBox="0 0 ${w} ${h}" style="width:100%"><image href="${result.imageB}" width="${w}" height="${h}"/>${boxes}</svg><ol>${changes.map(c=>`<li>${description(c)}</li>`).join('')}</ol><p>${uncertain.length?'ยังมี '+uncertain.length+' รายการที่อ่านไม่แน่ใจ ไม่ใช่ผลยืนยันว่าเอกสารเหมือนกัน':changes.length?'ตรวจพบข้อความเปลี่ยน':'ไม่พบความต่างภายใต้เกณฑ์การตรวจรุ่นนี้'}</p><details><summary>รายการที่ต้องตรวจเพิ่มเติม (${uncertain.length})</summary><pre style="white-space:pre-wrap">${esc(JSON.stringify(uncertain,null,2))}</pre></details><details><summary>ดูไฟล์ A ต้นฉบับ</summary><img src="${result.imageA}" style="width:100%"></details><small>compare-browser-3 · ตรวจในเบราว์เซอร์ · รองรับหน้าเดียวขนาดตรงกัน</small></div>`;
   }
   root.HooHooCompare={compare,render,candidates,edits};
 })(window);
