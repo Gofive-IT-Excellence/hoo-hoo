@@ -1,0 +1,18 @@
+/* Welcome is presentation only; existing login and document logic stay intact. */
+(() => {
+  const video=document.getElementById('welcome-video');
+  const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
+  async function play(){try{await video.play();}catch{}}
+  document.querySelectorAll('[data-welcome-enter]').forEach(button=>button.addEventListener('click',()=>{
+    video.pause();document.body.classList.remove('welcome-open');
+    window.location.hash='login';window.scrollTo(0,0);closeLoginModal();
+    document.getElementById('loginToggleButton').focus({preventScroll:true});
+  }));
+  document.querySelector('#login .login-brand').addEventListener('click',event=>{
+    event.preventDefault();closeLoginModal();document.body.classList.add('welcome-open');
+    window.location.hash='welcome';window.scrollTo(0,0);document.querySelector('[data-welcome-enter]').focus();
+    if(!reduced.matches)play();
+  });
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)video.pause();});
+  if(!reduced.matches)play();
+})();

@@ -1,0 +1,63 @@
+.welcome-screen{display:none;min-height:100svh;background:#f3f8fb;color:#101828;padding:28px clamp(24px,5vw,88px);box-sizing:border-box;flex-direction:column}
+.welcome-open .welcome-screen{display:flex}
+.welcome-open .login-section,.welcome-open .app-shell,.welcome-open #chatbotWidget{display:none!important}
+.welcome-header{display:flex;justify-content:space-between;align-items:center;gap:24px;width:100%;max-width:1440px;margin:0 auto}
+.welcome-login{font:500 15px Prompt,sans-serif;border:1px solid #cddce0;background:#fff;color:#243746;border-radius:12px;padding:12px 24px;cursor:pointer}
+.welcome-main{flex:1;display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:clamp(30px,4vw,76px);max-width:1440px;width:100%;margin:48px auto}
+.welcome-eyebrow{color:#497b48;font-size:12px;font-weight:600;letter-spacing:.16em;margin:0 0 18px}
+.welcome-copy h1{font-size:clamp(32px,3.5vw,57px);font-weight:700;line-height:1.4;letter-spacing:-.035em;margin:0 0 22px}
+.welcome-name{white-space:nowrap}
+.welcome-highlight{background:#e8f7d7;color:#447b3f;padding:0 .15em;box-decoration-break:clone;-webkit-box-decoration-break:clone;border-radius:7px;white-space:nowrap}
+.welcome-copy h1 strong{color:#00857f;font-weight:700;white-space:nowrap}
+.welcome-description{font-size:clamp(15px,1.15vw,18px);line-height:1.95;color:#536276;max-width:580px;margin:0 0 30px}
+.welcome-actions{display:flex;gap:12px;flex-wrap:wrap}
+.welcome-actions .button{font-size:15px;padding:16px 24px;min-height:54px}
+.welcome-actions .button-primary{background:#00857f;color:white}
+.welcome-actions .button-primary:hover{background:#006d69}
+.welcome-media{position:relative;border-radius:28px;overflow:hidden;background:#dcecef;box-shadow:0 24px 64px #173f4c16;aspect-ratio:1.14}
+.welcome-media video{display:block;width:100%;height:100%;object-fit:cover;object-position:62% center}
+.welcome-video-toggle{position:absolute;bottom:18px;right:18px;border:1px solid #ffffff80;border-radius:24px;background:#fff;color:#243746;padding:10px 17px;font:500 12px Prompt,sans-serif;cursor:pointer;box-shadow:0 2px 16px #0001}
+.welcome-footer{max-width:1440px;width:100%;margin:0 auto;padding-top:18px;border-top:1px solid #dfe9ed;color:#68808a;font-size:11px;font-weight:600;letter-spacing:.06em;display:flex;justify-content:space-between;gap:18px}
+.welcome-footer span{font-weight:400;letter-spacing:0}
+.welcome-screen button:focus-visible,.welcome-screen a:focus-visible{outline:3px solid #168277;outline-offset:5px}
+.welcome-login:hover,.welcome-video-toggle:hover{background:#e7f6f2}
+@media(max-width:1000px){.welcome-main{gap:28px}.welcome-copy h1{font-size:36px}.welcome-media{aspect-ratio:.85}.welcome-actions .button{padding:14px 18px}}
+@media(max-width:760px){.welcome-screen{padding:20px}.welcome-header .login-brand img{width:42px;height:42px}.welcome-header .login-brand strong{font-size:20px}.welcome-header .login-brand small{font-size:11px}.welcome-login{padding:10px 15px;font-size:13px}.welcome-main{grid-template-columns:1fr;margin:36px auto 30px;gap:30px}.welcome-copy h1{font-size:clamp(30px,7.4vw,46px);line-height:1.45}.welcome-description{font-size:15px;line-height:1.85;margin-bottom:24px}.welcome-eyebrow{font-size:10px;margin-bottom:12px}.welcome-media{aspect-ratio:16/10;border-radius:20px}.welcome-media video{object-position:center}.welcome-actions{gap:10px}.welcome-actions .button{flex:1;font-size:13px;padding:14px 12px;white-space:nowrap}.welcome-footer{font-size:10px;flex-wrap:wrap}}
+/* Full-bleed welcome film; all foreground content stays above the tint. */
+.welcome-screen{position:relative;isolation:isolate;background:#10262c;color:#fff;overflow:hidden}
+.welcome-screen::before{content:"";position:absolute;inset:0;z-index:0;background:rgba(7,24,31,.64);pointer-events:none}
+.welcome-header,.welcome-main,.welcome-footer{position:relative;z-index:1}
+.welcome-header .login-brand strong,.welcome-header .login-brand small{color:#fff}
+.welcome-main{position:static;z-index:auto;display:flex;align-items:center;margin:40px auto;gap:0}
+.welcome-copy{position:relative;z-index:1;width:min(640px,58%)}
+.welcome-copy h1{font-size:clamp(34px,3.65vw,60px);line-height:1.35;text-shadow:0 2px 18px #0003}
+.welcome-eyebrow{color:#bcebe2}
+.welcome-copy h1 strong{color:#65eee0}
+.welcome-description{color:#f0f6f7;font-size:17px;text-shadow:0 1px 6px #0006}
+.welcome-highlight{text-shadow:none}
+.welcome-media{position:absolute;inset:0;z-index:-1;border-radius:0;aspect-ratio:auto;box-shadow:none;background:#10262c;overflow:visible}
+.welcome-media video{width:100%;height:100%;object-fit:cover;object-position:center}
+.welcome-video-toggle{position:fixed;right:clamp(24px,5vw,88px);bottom:72px;z-index:3;background:#fff;color:#243746}
+.welcome-media{z-index:auto;pointer-events:none;background:transparent}
+.welcome-media video{position:absolute;z-index:0;inset:0}
+.welcome-screen::before{z-index:1}
+.welcome-header,.welcome-copy,.welcome-footer{z-index:2}
+.welcome-video-toggle{pointer-events:auto}
+.welcome-footer{color:#e0eeef;border-color:#ffffff40}
+.welcome-screen button:focus-visible,.welcome-screen a:focus-visible{outline-color:#83f4e5}
+@media(max-width:1000px){.welcome-copy{width:64%}.welcome-copy h1{font-size:40px}.welcome-media{aspect-ratio:auto}}
+@media(max-width:760px){.welcome-screen{padding:20px;min-height:100svh}.welcome-screen::before{background:rgba(7,24,31,.72)}.welcome-main{margin:40px auto 90px}.welcome-copy{width:100%;max-width:540px}.welcome-copy h1{font-size:clamp(30px,7.7vw,46px);line-height:1.4}.welcome-description{font-size:15px}.welcome-media{border-radius:0;aspect-ratio:auto}.welcome-media video{object-position:68% center}.welcome-video-toggle{position:absolute;right:20px;bottom:65px}.welcome-footer{font-size:10px}.welcome-actions .button{min-height:50px}}
+.welcome-screen::before{display:none}
+.welcome-header{justify-content:flex-end}
+.welcome-header{position:absolute;inset:auto 0 clamp(32px,6vh,72px);max-width:none;justify-content:center;z-index:2}
+.welcome-login{border-radius:999px;border:2px solid #d8e0e7;background:#ffffffed;color:#101828;font-size:clamp(20px,2vw,28px);font-weight:700;padding:16px 38px;min-height:66px;box-shadow:0 5px 24px #10262c12}
+.welcome-wordmark{position:absolute;left:clamp(24px,7vw,120px);top:50%;transform:translateY(-50%);z-index:2;display:flex;flex-direction:column;color:#101828;text-shadow:0 2px 18px #ffffffaa;line-height:1.2}
+.welcome-wordmark strong{font-size:clamp(38px,5.5vw,84px);font-weight:700;letter-spacing:-.025em}
+.welcome-wordmark span{font-size:clamp(23px,3vw,46px);font-weight:500;margin-top:10px}
+@media(max-width:760px){.welcome-wordmark{top:23%;left:24px}.welcome-login{font-size:22px;padding:14px 32px;min-height:60px}}
+@media(prefers-reduced-motion:reduce){.welcome-screen *{animation:none!important;transition:none!important}}
+.welcome-wordmark{left:14%;top:26%;transform:none;align-items:flex-start}
+.welcome-wordmark strong{color:#00b2bd;font-size:clamp(38px,4.65vw,76px)}
+.welcome-wordmark span{font-size:clamp(23px,2.65vw,42px);margin-top:12px}
+.welcome-wordmark .welcome-login{margin-top:24px;font-size:16px;min-height:44px;padding:10px 22px;border-width:1px;box-shadow:none}
+@media(max-width:760px){.welcome-wordmark{left:8%;top:20%}.welcome-wordmark .welcome-login{font-size:16px;min-height:44px;padding:10px 22px;margin-top:20px}}

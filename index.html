@@ -15,9 +15,22 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="welcome.css" />
   </head>
 
-  <body class="logged-out">
+  <body class="logged-out welcome-open">
+    <section class="welcome-screen" aria-label="HOO HOO หน้าต้อนรับ">
+      <div class="welcome-wordmark"><strong>HOO HOO</strong><span>AI Proofread</span>
+        <button class="welcome-login" type="button" data-welcome-enter>เข้าสู่ระบบ</button>
+      </div>
+      <main class="welcome-main">
+        <div class="welcome-media">
+          <video id="welcome-video" muted loop playsinline preload="auto" poster="assets/hoo-welcome-poster.jpg" aria-label="ฮูกกำลังตรวจพิสูจน์อักษรบนโต๊ะทำงาน">
+            <source src="assets/hoo-welcome-seamless.mp4" type="video/mp4">
+          </video>
+        </div>
+      </main>
+    </section>
     <section class="login-section" id="login">
       <header class="landing-header">
         <a class="login-brand" href="#login" aria-label="HOO HOO home">
@@ -434,5 +447,6 @@
     <script src="compare-browser.js?v=20260915-3"></script>
     <script src="ocr-word-locator.js?v=20260915-1"></script>
     <script src="script.js?v=20260915-word-position-1"></script>
+    <script src="welcome.js"></script>
   </body>
 </html>
