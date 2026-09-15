@@ -386,9 +386,20 @@ const response = await fetch(endpoint, {
     const html = Array.isArray(json) ? json[0]?.html : json?.html;
 
     if (html) {
+      let finalHtml = html;
+      let needsReview = false;
+      if (effectiveMode === 'single' && /^image\//.test(fileA.type)) {
+        statusText.textContent = 'กำลังยืนยันตำแหน่งคำจากภาพจริง';
+        let ocr = null;
+        try { ocr = await HooHooWordLocator.read(fileA); }
+        catch (error) { console.warn('Native OCR location unavailable', error.message); }
+        const checked = HooHooWordLocator.reanchor(html, ocr);
+        finalHtml = checked.html;
+        needsReview = checked.unlocated > 0;
+      }
       resultBox.classList.remove("is-loading");
-      renderResultHtml(html);
-      statusText.textContent = "ตรวจเสร็จแล้ว";
+      renderResultHtml(finalHtml);
+      statusText.textContent = needsReview ? 'ตรวจเสร็จ — มีคำที่ต้องยืนยันตำแหน่ง' : 'ตรวจเสร็จแล้ว';
     } else {
       resultBox.classList.remove("is-loading");
       resultBox.innerHTML = `
