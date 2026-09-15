@@ -3,6 +3,24 @@
   'use strict';
   const valid=b=>Array.isArray(b)&&b.length===4&&b.every(Number.isFinite)&&b[2]>b[0]&&b[3]>b[1];
   const union=bs=>[Math.min(...bs.map(b=>b[0])),Math.min(...bs.map(b=>b[1])),Math.max(...bs.map(b=>b[2])),Math.max(...bs.map(b=>b[3]))];
+  // Narrow spelling rules; never treat an arbitrary AI replacement as verified.
+  const clearPairs=new Map(Object.entries({'อนุญาติ':'อนุญาต','ประมวณผล':'ประมวลผล','บริสัท':'บริษัท','ข้อมุล':'ข้อมูล','ข้อตวาม':'ข้อความ','บันทก':'บันทึก','ลกษณะ':'ลักษณะ','กำนด':'กำหนด','หน่ยว':'หน่วย','ปรากฎ':'ปรากฏ','สังเกตุ':'สังเกต','คำนวน':'คำนวณ'}));
+  function canMark(original,corrected,line){
+    if(clearPairs.get(original)===corrected)return true;
+    if(original==='ผู'&&corrected==='ผู้')return /ผู(?:ป่วย|ถือหุ้น|ใช้งาน|ให้บริการ)/.test(line);
+    if(original==='ตอง'&&corrected==='ต้อง')return /(?:ความตองการ|ตองการ|ตองได้รับ)/.test(line);
+    if(original==='นบ'&&corrected==='นับ')return /นบ(?:จำนวน|ความถี่|ครั้ง)/.test(line);
+    return false;
+  }
+  function addOverlay(doc,wrapper,match,ocr,original,corrected){
+    const [x,y,r,b]=match.box,mark=doc.createElement('div');
+    mark.className='verified-spelling-mark';mark.title=original+' → '+corrected;
+    mark.setAttribute('aria-label',mark.title);
+    mark.style.cssText='position:absolute;background:rgba(239,68,68,.28);border-bottom:2px solid #ef4444;pointer-events:auto;';
+    mark.style.left=x/ocr.width*100+'%';mark.style.top=y/ocr.height*100+'%';
+    mark.style.width=(r-x)/ocr.width*100+'%';mark.style.height=(b-y)/ocr.height*100+'%';
+    wrapper.append(mark);
+  }
   function lines(data){
     const out=[];
     for(const b of data.blocks||[])for(const p of b.paragraphs||[])for(const l of p.lines||[]){
@@ -89,14 +107,14 @@
       if(!match.box){
         const note=doc.createElement('span');note.textContent=' — ยังยืนยันตำแหน่งไม่ได้';li.append(note);unlocated++;continue;
       }
-      // A matching OCR location is not evidence of a spelling error.
-      // Keep the candidate off the original image until semantic verification exists.
+      if(!canMark(original,corrected,match.line)){unlocated++;continue;}
+      addOverlay(doc,wrapper,match,ocr,original,corrected);
       located++;
     }
     const count=panel.querySelectorAll('li').length;
     const heading=panel.querySelector('h3');if(heading)heading.textContent='คำแนะนำที่ต้องตรวจทาน ('+count+')';
-    const notice=doc.createElement('p');notice.textContent='พิกัด OCR ไม่ใช่การยืนยันว่าคำนั้นผิด คำแนะนำทั้งหมดต้องตรวจเทียบภาพต้นฉบับ ระบบไม่ได้แก้ไขไฟล์ และอาจตรวจคำผิดได้ไม่ครบ';panel.prepend(notice);
-    const status=panel.querySelector('.location-status');if(status)status.textContent='ไม่ทำเครื่องหมายคำผิดบนต้นฉบับ: '+count+' รายการยังไม่ผ่านการยืนยัน';
+    const notice=doc.createElement('p');notice.textContent='ปาดแดงเฉพาะคู่คำที่ผ่านกฎสะกดและพบพิกัด OCR ส่วนคำอื่นแยกให้ตรวจทาน ไม่ได้แก้ไขไฟล์ต้นฉบับ และอาจตรวจคำผิดได้ไม่ครบ';panel.prepend(notice);
+    const status=panel.querySelector('.location-status');if(status)status.textContent='ปาดแดง '+located+' จุดที่ผ่านกฎสะกดและพิกัด OCR · ตรวจทานเพิ่มเติม '+unlocated+' รายการ';
     const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · review-only-3';
     collapseReview(doc,panel);
     return {html:'<!doctype html>'+doc.documentElement.outerHTML,located,unlocated,reviewCount:count};
@@ -108,15 +126,59 @@
   }
   function preserveOriginal(html){
     const doc=new DOMParser().parseFromString(html,'text/html');
-    doc.querySelectorAll('mark.wrong-word').forEach(n=>n.replaceWith(doc.createTextNode(n.textContent)));
+    let marked=0;
+    doc.querySelectorAll('mark.wrong-word').forEach(n=>{
+      const correct=(n.title||'').replace(/^(?:แก้เป็น:|เสนอให้ตรวจทาน:)\s*/, '');
+      if(canMark(n.textContent,correct,n.parentElement.textContent)){marked++;}
+      else n.replaceWith(doc.createTextNode(n.textContent));
+    });
     const style=doc.createElement('style');
     style.textContent='.pdf-red-mark{display:none!important}';doc.head.append(style);
     const panel=doc.querySelector('.correction-panel');if(panel)collapseReview(doc,panel);
     const summary=doc.querySelector('.summary-box');
-    if(summary)summary.textContent='ยังไม่มีคำผิดที่ยืนยันแล้ว — มีรายการให้ตรวจทาน ไม่ได้แก้ต้นฉบับ';
+    if(summary)summary.textContent='ผ่านกฎสะกดในข้อความ '+marked+' จุด — PDF ต้องยืนยันพิกัดภาพเพิ่ม ไม่ได้แก้ต้นฉบับ';
     return '<!doctype html>'+doc.documentElement.outerHTML;
   }
-  const api={lines,locate,read,reanchor,preserveOriginal};
+  async function annotatePdf(html,file,progress=()=>{}){
+    const doc=new DOMParser().parseFromString(html,'text/html');
+    const candidates=[...doc.querySelectorAll('.correction-panel li')].map(li=>({wrong:li.querySelector('.correction-wrong')?.textContent.trim(),correct:li.querySelector('.correction-correct')?.textContent.trim()})).filter(c=>c.wrong&&c.correct);
+    const pdfjs=await import(new URL('vendor/pdfjs/pdf.mjs',document.baseURI).href);
+    pdfjs.GlobalWorkerOptions.workerSrc=new URL('vendor/pdfjs/pdf.worker.mjs',document.baseURI).href;
+    const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+    let count=0;
+    try{
+      if(pdf.numPages>20)throw Error('PDF เกิน 20 หน้า: ยังไม่ได้ยืนยันพิกัดคำ กรุณาแบ่งไฟล์');
+      const preview=doc.querySelector('.pdf-overlay-viewer');
+      if(!preview)throw Error('ไม่พบพื้นที่แสดง PDF');
+      preview.replaceChildren();doc.querySelectorAll('script').forEach(n=>n.remove());
+      for(let n=1;n<=pdf.numPages;n++){
+        progress('ตรวจตำแหน่งคำบน PDF หน้า '+n+'/'+pdf.numPages);
+        const page=await pdf.getPage(n),viewport=page.getViewport({scale:2});
+        if(viewport.width*viewport.height>20000000)throw Error('หน้า PDF มีขนาดใหญ่เกินสำหรับตรวจพิกัด');
+        const canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+        await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
+        const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+        const ocr=await read(blob),wrap=doc.createElement('div'),img=doc.createElement('img');
+        wrap.style.cssText='position:relative;width:100%;margin-bottom:16px;background:white';
+        img.src=canvas.toDataURL('image/png');img.alt='หน้า '+n;img.style.cssText='display:block;width:100%;height:auto';wrap.append(img);
+        for(const c of candidates){
+          // Locate each occurrence separately; never reuse a coordinate for another word.
+          for(const row of ocr.lines){const match=locate([row],c.wrong);
+            if(match.box&&canMark(c.wrong,c.correct,match.line)){addOverlay(doc,wrap,match,ocr,c.wrong,c.correct);count++;}
+          }
+        }
+        preview.append(wrap);canvas.width=canvas.height=0;page.cleanup();
+      }
+      doc.querySelectorAll('mark.wrong-word').forEach(n=>n.replaceWith(doc.createTextNode(n.textContent)));
+      const summary=doc.querySelector('.summary-box');if(summary)summary.textContent='ปาดแดง '+count+' จุดที่ผ่านกฎสะกดและพิกัดภาพ';
+      const panel=doc.querySelector('.correction-panel');if(panel){
+        const heading=panel.querySelector('h3');if(heading)heading.textContent='รายการตรวจคำ';
+        const note=panel.querySelector('p');if(note)note.textContent='ปาดแดงเฉพาะคู่คำที่ผ่านกฎและพบใน OCR ของภาพจริง รายการอื่นยังต้องตรวจทาน ไม่ได้แก้ไฟล์ต้นฉบับ';
+      }
+      return {html:'<!doctype html>'+doc.documentElement.outerHTML,count};
+    }finally{await pdf.destroy();}
+  }
+  const api={lines,locate,read,reanchor,preserveOriginal,canMark,annotatePdf};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   else root.HooHooWordLocator=api;
 })(typeof window==='undefined'?globalThis:window);

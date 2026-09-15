@@ -395,6 +395,15 @@ const response = await fetch(endpoint, {
         const checked = HooHooWordLocator.reanchor(html, ocr);
         finalHtml = checked.html;
         needsReview = checked.reviewCount > 0;
+      } else if (effectiveMode === 'single' && /\.pdf$/i.test(fileA.name)) {
+        try {
+          const checked = await HooHooWordLocator.annotatePdf(html,fileA,message=>{statusText.textContent=message;});
+          finalHtml = checked.html;
+        } catch (error) {
+          finalHtml = HooHooWordLocator.preserveOriginal(html);
+          const warning = document.createElement('p');warning.textContent='ยังไม่ได้ยืนยันตำแหน่ง: '+error.message;
+          finalHtml += warning.outerHTML;
+        }
       } else if (effectiveMode === 'single') {
         finalHtml = HooHooWordLocator.preserveOriginal(html);
       }
