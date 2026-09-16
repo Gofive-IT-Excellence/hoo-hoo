@@ -23,13 +23,14 @@ const fileBLabel = document.getElementById("fileBLabel");
 const resultBox = document.getElementById("result");
 const statusText = document.getElementById("statusText");
 const uploadGrid = document.getElementById("uploadGrid");
-const loginToggleButton = document.getElementById("loginToggleButton");
+const loginForm = document.getElementById("loginForm");
+const loginSection = document.getElementById("login");
+const loginPanel = document.getElementById("loginPanel");
 const landingStartButton = document.getElementById("landingStartButton");
 const owlSound = document.getElementById("owlSound");
 const logoutButton = document.getElementById("logoutButton");
 const appShell = document.querySelector(".app-shell");
 
-loginToggleButton.addEventListener("click", enterWorkspace);
 landingStartButton.addEventListener("click", enterWorkspace);
 
 if (owlSound) {
@@ -69,6 +70,41 @@ if (owlSound) {
     });
   });
 }
+
+loginForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  // Login สำเร็จ แต่ยังไม่เข้า Workspace
+  // ให้แสดงหน้าทักทาย (ภาพที่ 3) ก่อน
+  sessionStorage.setItem("hooHooLoggedIn", "true");
+
+     document.body.classList.remove("logged-in");
+     document.body.classList.add("logged-out");
+
+  closeLoginModal();
+
+  // ยังซ่อนหน้า Workspace ไว้
+  appShell.setAttribute("aria-hidden", "true");
+
+  // กลับไปด้านบนของหน้าทักทาย
+  window.location.hash = "login";
+  window.scrollTo({
+    top: 0,
+    behavior: "instant"
+  });
+});
+
+loginSection.addEventListener("click", (event) => {
+  if (!loginSection.classList.contains("show-login")) return;
+  if (loginPanel.contains(event.target)) return;
+  closeLoginModal();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && loginSection.classList.contains("show-login")) {
+    closeLoginModal();
+  }
+});
 
 logoutButton.addEventListener("click", () => {
   setLoggedIn(false);
@@ -141,12 +177,22 @@ function setLoggedIn(isLoggedIn) {
   document.body.classList.toggle("logged-in", isLoggedIn);
   document.body.classList.toggle("logged-out", !isLoggedIn);
   appShell.setAttribute("aria-hidden", String(!isLoggedIn));
+  closeLoginModal();
 
   if (isLoggedIn) {
     sessionStorage.setItem("hooHooLoggedIn", "true");
   } else {
     sessionStorage.removeItem("hooHooLoggedIn");
   }
+}
+
+function openLoginModal() {
+  loginSection.classList.add("show-login");
+  document.getElementById("loginEmail")?.focus();
+}
+
+function closeLoginModal() {
+  loginSection.classList.remove("show-login");
 }
 
 function enterWorkspace() {
