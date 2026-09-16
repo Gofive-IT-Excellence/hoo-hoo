@@ -23,32 +23,14 @@ const fileBLabel = document.getElementById("fileBLabel");
 const resultBox = document.getElementById("result");
 const statusText = document.getElementById("statusText");
 const uploadGrid = document.getElementById("uploadGrid");
-const loginForm = document.getElementById("loginForm");
-const loginSection = document.getElementById("login");
-const loginPanel = document.getElementById("loginPanel");
 const loginToggleButton = document.getElementById("loginToggleButton");
 const landingStartButton = document.getElementById("landingStartButton");
-const landingTrialButton = document.getElementById("landingTrialButton");
 const owlSound = document.getElementById("owlSound");
 const logoutButton = document.getElementById("logoutButton");
 const appShell = document.querySelector(".app-shell");
 
-loginToggleButton.addEventListener("click", openLoginModal);
-
-loginSection.addEventListener("click", (event) => {
-  if (!loginSection.classList.contains("show-login")) return;
-  if (event.target === loginToggleButton || loginPanel.contains(event.target)) return;
-  closeLoginModal();
-});
-
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && loginSection.classList.contains("show-login")) {
-    closeLoginModal();
-  }
-});
-
+loginToggleButton.addEventListener("click", enterWorkspace);
 landingStartButton.addEventListener("click", enterWorkspace);
-landingTrialButton.addEventListener("click", enterWorkspace);
 
 if (owlSound) {
   let owlSoundTimer;
@@ -87,11 +69,6 @@ if (owlSound) {
     });
   });
 }
-
-loginForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  enterWorkspace();
-});
 
 logoutButton.addEventListener("click", () => {
   setLoggedIn(false);
@@ -164,22 +141,12 @@ function setLoggedIn(isLoggedIn) {
   document.body.classList.toggle("logged-in", isLoggedIn);
   document.body.classList.toggle("logged-out", !isLoggedIn);
   appShell.setAttribute("aria-hidden", String(!isLoggedIn));
-  closeLoginModal();
 
   if (isLoggedIn) {
     sessionStorage.setItem("hooHooLoggedIn", "true");
   } else {
     sessionStorage.removeItem("hooHooLoggedIn");
   }
-}
-
-function openLoginModal() {
-  loginSection.classList.add("show-login");
-  document.getElementById("loginEmail")?.focus();
-}
-
-function closeLoginModal() {
-  loginSection.classList.remove("show-login");
 }
 
 function enterWorkspace() {
