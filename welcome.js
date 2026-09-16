@@ -6,7 +6,7 @@
   document.querySelectorAll('[data-welcome-enter]').forEach(button=>button.addEventListener('click',()=>{
     video.pause();document.body.classList.remove('welcome-open');
     window.location.hash='login';window.scrollTo(0,0);
-    document.getElementById('loginToggleButton').focus({preventScroll:true});
+    openLoginModal();
   }));
   document.addEventListener('visibilitychange',()=>{if(document.hidden)video.pause();});
   if(!reduced.matches)play();
