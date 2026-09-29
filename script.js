@@ -315,6 +315,42 @@ async function pdfToPngFile(file) {
   return new File([blob], outputName, { type: "image/png" });
 }
 
+function toBrowserOcrPayload(ocr) {
+  if (!ocr || !Number.isInteger(ocr.width) || !Number.isInteger(ocr.height) ||
+      ocr.width < 1 || ocr.height < 1 || ocr.width * ocr.height > 16000000 ||
+      !Array.isArray(ocr.lines)) return null;
+  const nx = x => Math.round(Math.max(0, Math.min(1000, x / ocr.width * 1000)));
+  const ny = y => Math.round(Math.max(0, Math.min(1000, y / ocr.height * 1000)));
+  const regions = [];
+  for (const line of ocr.lines.slice(0, 2000)) {
+    const text = String(line.text || '').normalize('NFC');
+    const glyphs = (line.glyphs || []).filter(g => Array.isArray(g.box) &&
+      g.box.length === 4 && g.box.every(Number.isFinite));
+    if (!text.trim() || text.length > 10000 || !glyphs.length) continue;
+    const boxFor = gs => [
+      nx(Math.min(...gs.map(g => g.box[0]))), ny(Math.min(...gs.map(g => g.box[1]))),
+      nx(Math.max(...gs.map(g => g.box[2]))), ny(Math.max(...gs.map(g => g.box[3])))
+    ];
+    const bbox = boxFor(glyphs);
+    if (bbox[2] <= bbox[0] || bbox[3] <= bbox[1]) continue;
+    const words = [];
+    if (typeof Intl.Segmenter === 'function') {
+      for (const part of new Intl.Segmenter('th', {granularity:'word'}).segment(text)) {
+        if (!part.isWordLike) continue;
+        const start = part.index, end = start + part.segment.length;
+        const matches = glyphs.filter(g => g.end > start && g.start < end);
+        if (!matches.length) continue;
+        const wordBox = boxFor(matches);
+        if (wordBox[2] > wordBox[0] && wordBox[3] > wordBox[1])
+          words.push({text: text.slice(start, end), start, end, bbox: wordBox});
+      }
+    }
+    regions.push({text, bbox, words});
+  }
+  if (regions.length < 2 || regions.reduce((n, r) => n + r.text.length, 0) < 15) return null;
+  return {version:1, engine:'tesseract-browser-7', width:ocr.width, height:ocr.height, regions};
+}
+
 let comparisonBusy = false;
 async function sendToN8N() {
   if (comparisonBusy) return;
@@ -343,6 +379,7 @@ async function sendToN8N() {
   statusText.textContent = "กำลังประมวลผล";
 
   try {
+    let browserLocator = null;
     if (mode === 'compare') {
       comparisonBusy = true;
       const result = await HooHooCompare.compare(fileA, fileB, message => {
@@ -364,7 +401,15 @@ async function sendToN8N() {
       ]);
     }
 
+    if (effectiveMode === 'single' && /^image\//.test(fileA.type)) {
+      statusText.textContent = 'กำลังอ่านตำแหน่งคำในเบราว์เซอร์';
+      try { browserLocator = await HooHooWordLocator.read(fileA); }
+      catch (error) { console.warn('Browser OCR unavailable', error); }
+    }
+    const browserOcr = toBrowserOcrPayload(browserLocator);
+
     const form = new FormData();
+    if (browserOcr) form.append('browserOCR', JSON.stringify(browserOcr));
     form.append("mode", effectiveMode);
     form.append("fileA", uploadFileA);
     if (mode === "compare") form.append("fileB", uploadFileB);
@@ -402,8 +447,8 @@ const response = await fetch(endpoint, {
       let needsReview = effectiveMode === 'single';
       if (effectiveMode === 'single' && /^image\//.test(fileA.type)) {
         statusText.textContent = 'กำลังยืนยันตำแหน่งคำจากภาพจริง';
-        let ocr = null;
-        try { ocr = await HooHooWordLocator.read(fileA); }
+        let ocr = browserLocator;
+        if (!ocr) try { ocr = await HooHooWordLocator.read(fileA); }
         catch (error) { console.warn('Native OCR location unavailable', error.message); }
         const checked = HooHooWordLocator.reanchor(html, ocr);
         finalHtml = checked.html;
