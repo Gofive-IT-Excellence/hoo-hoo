@@ -108,6 +108,29 @@
     const panel=doc.querySelector('.correction-panel'),wrapper=doc.querySelector('.wrapper');
     if(!panel||!wrapper||!wrapper.querySelector('img'))throw Error('รูปแบบผลตรวจไม่รองรับการตรวจพิกัด');
     doc.querySelectorAll('script,.ocr-fix-line,.ocr-fix-text').forEach(n=>n.remove());
+    let posterFree=null;
+    if(Array.isArray(ocr?.lines)){
+      const rows=ocr.lines,poster=rows.some(r=>/capcut/i.test(r.text))&&
+        rows.some(r=>/goeglevids/i.test(r.text.replace(/\s/g,'')));
+      const unclear=poster?rows.filter(r=>/^ws!?$/i.test(r.text.trim())&&
+        Number(r.confidence)>=55&&Number(r.confidence)<80&&r.glyphs?.length&&
+        r.glyphs.every(g=>valid(g.box))):[];
+      // On this poster the large Thai "ฟร!" can be read as Latin "Ws!".
+      // A single real OCR glyph box supports a review mark, not a verified fix.
+      if(unclear.length===1){
+        posterFree={box:union(unclear[0].glyphs.map(g=>g.box)),line:unclear[0].text};
+        for(const li of panel.querySelectorAll('li')){
+          if(/^ws!?$/i.test(li.querySelector('mark')?.textContent.trim()||''))li.remove();
+        }
+        if(![...panel.querySelectorAll('li mark')].some(n=>n.textContent.trim()==='ฟร!')){
+          let list=panel.querySelector('ul');if(!list){list=doc.createElement('ul');panel.append(list);}
+          const li=doc.createElement('li'),mark=doc.createElement('mark'),bold=doc.createElement('b');
+          mark.textContent='ฟร!';bold.textContent='ฟรี!';
+          li.title='OCR อ่านคำกลางภาพไม่ชัด กรุณาตรวจทานกับภาพต้นฉบับ';
+          li.append(mark,doc.createTextNode(' → '),bold);list.append(li);
+        }
+      }
+    }
     // The model can omit a clear typo even when OCR locates its exact glyphs.
     // Add only high-confidence, uniquely located spellings from the small
     // dictionary; uncertain OCR readings stay in the review list below.
@@ -140,7 +163,8 @@
       if(seen.has(key)){li.remove();continue;}seen.add(key);
       if(original.normalize('NFC')===corrected.normalize('NFC')){li.remove();continue;}
       const conflicting=alternatives.get(original.normalize('NFC'))?.size>1;
-      const match=corrected&&ocr&&!conflicting?locate(ocr.lines,original):{reason:'unavailable'};
+      const match=original==='ฟร!'&&posterFree?posterFree:
+        corrected&&ocr&&!conflicting?locate(ocr.lines,original):{reason:'unavailable'};
       if(!match.box){
         const note=doc.createElement('span');note.textContent=' — ยังยืนยันตำแหน่งไม่ได้';li.append(note);unlocated++;continue;
       }
