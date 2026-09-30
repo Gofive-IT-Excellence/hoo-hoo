@@ -16,6 +16,16 @@
     const [x,y,r,b]=match.box,mark=doc.createElement('div'),label=doc.createElement('div');
     const baseline=Math.min(b,Math.max(y,match.underlineY??b));
     const color=verified?'#dc2626':'#b45309';
+    let aboveGap=Infinity,belowGap=Infinity;
+    for(const row of ocr.lines||[]){
+      const boxes=row.glyphs?.map(g=>g.box).filter(valid)||[];
+      if(!boxes.length)continue;
+      const rb=union(boxes);
+      if(rb[0]>=r||rb[2]<=x)continue;
+      if(rb[3]<=y)aboveGap=Math.min(aboveGap,y-rb[3]);
+      if(rb[1]>=b)belowGap=Math.min(belowGap,rb[1]-b);
+    }
+    const below=aboveGap<36&&belowGap>aboveGap;
     mark.className=verified?'verified-spelling-mark':'review-spelling-mark';mark.title=(verified?'คำผิดที่ยืนยัน: ':'คำแนะนำให้ตรวจทาน: ')+original+' → '+corrected;
     mark.setAttribute('aria-label',mark.title);
     mark.style.cssText='position:absolute;height:0;background:none;border-bottom:3px '+(verified?'solid ':'dashed ')+color+';z-index:3;pointer-events:auto;';
@@ -23,8 +33,8 @@
     mark.style.width=(r-x)/ocr.width*100+'%';
     label.className=verified?'verified-spelling-correction':'review-spelling-correction';
     label.textContent='→ '+corrected;label.title=mark.title;label.setAttribute('aria-label',mark.title);
-    label.style.cssText='position:absolute;z-index:4;max-width:45%;padding:2px 6px;border:1px solid '+color+';border-radius:5px;background:#fff;color:'+color+';font:700 clamp(12px,1.5vw,19px)/1.2 Arial,Tahoma,sans-serif;white-space:nowrap;box-shadow:0 1px 4px #0003;transform:translate(-50%,-100%);pointer-events:auto;';
-    label.style.left=(x+r)/2/ocr.width*100+'%';label.style.top=Math.max(0,y-5)/ocr.height*100+'%';
+    label.style.cssText='position:absolute;z-index:4;color:'+color+';font:700 clamp(14px,2vw,24px)/1.2 Arial,Tahoma,sans-serif;white-space:nowrap;background:transparent;border:0;padding:0;box-shadow:none;-webkit-text-stroke:2px #fff;paint-order:stroke fill;text-shadow:0 1px 1px #fff;transform:translate(-50%,'+(below?'0':'-100%')+');pointer-events:auto;';
+    label.style.left=(x+r)/2/ocr.width*100+'%';label.style.top=(below?Math.min(ocr.height,b+5):Math.max(0,y-5))/ocr.height*100+'%';
     wrapper.append(mark,label);
   }
   function underlineY(glyphs){
@@ -75,7 +85,12 @@
         const end=at+word.length,gs=row.glyphs.filter(g=>g.end>at&&g.start<end);
         // Partial glyphs and combining marks belonging to the next character
         // cannot be treated as reliable word boundaries.
-        if(boundaries.has(at)&&boundaries.has(end)&&gs.length&&gs[0].start===at&&gs.at(-1).end===end&&
+        // Thai word segmentation can merge a heading word with the next word
+        // (for example "วันกํานดชําระ"). A unique literal glyph sequence with
+        // a valid start boundary is still safe to locate without its end one.
+        const startBoundary=boundaries.has(at),endBoundary=boundaries.has(end);
+        const thaiJoined=startBoundary&&!endBoundary&&word.length>=5&&/^[\u0E00-\u0E7F]+$/.test(word);
+        if(startBoundary&&(endBoundary||thaiJoined)&&gs.length&&gs[0].start===at&&gs.at(-1).end===end&&
             !/^[\p{M}]/u.test(row.text.slice(end))){
           hits.push({box:union(gs.map(g=>g.box)),underlineY:underlineY(gs),line:row.text});
         }
@@ -187,7 +202,7 @@
       const match=original==='ฟร!'&&posterFree?posterFree:
         corrected&&ocr&&!conflicting?locate(ocr.lines,original):{reason:'unavailable'};
       if(!match.box){
-        const note=doc.createElement('span');note.textContent=' — ยังยืนยันตำแหน่งไม่ได้';li.append(note);unlocated++;continue;
+        const note=doc.createElement('span');note.textContent=match.reason==='ambiguous'?' — OCR พบหลายตำแหน่ง โปรดตรวจทาน':' — ยังยืนยันตำแหน่งไม่ได้';li.append(note);unlocated++;continue;
       }
       const verified=canMark(original,corrected,match.line);
       addOverlay(doc,wrapper,match,ocr,original,corrected,verified);
@@ -196,11 +211,11 @@
     const count=panel.querySelectorAll('li').length;
     const heading=panel.querySelector('h3');if(heading)heading.textContent='คำแนะนำที่ต้องตรวจทาน ('+count+')';
     const notice=doc.createElement('p');notice.textContent='สีแดงคือคู่คำที่ผ่านกฎสะกด สีส้มคือคำแนะนำที่ OCR พบตำแหน่งจริงแต่ยังต้องตรวจทาน ไม่ได้แก้ไขไฟล์ต้นฉบับ และอาจตรวจคำผิดได้ไม่ครบ';panel.prepend(notice);
-    const status=panel.querySelector('.location-status');if(status)status.textContent='ขีดแดง '+verifiedCount+' จุด · ขีดส้ม '+(located-verifiedCount)+' จุด · ยังไม่พบพิกัด '+unlocated+' รายการ';
-    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · inline-word-8';
+    const status=panel.querySelector('.location-status');if(status)status.textContent='ขีดแดง '+verifiedCount+' จุด · ขีดส้ม '+(located-verifiedCount)+' จุด · ยังขีดไม่ได้ '+unlocated+' รายการ';
+    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · inline-word-9';
     const banner=doc.createElement('p');
     banner.className='result-location-summary';
-    banner.textContent='คำแนะนำ '+count+' รายการ · พบตำแหน่งบนภาพ '+located+' รายการ · ยังไม่พบพิกัด '+unlocated+' รายการ';
+    banner.textContent='คำแนะนำ '+count+' รายการ · พบตำแหน่งบนภาพ '+located+' รายการ · ยังขีดไม่ได้ '+unlocated+' รายการ';
     banner.style.cssText='box-sizing:border-box;width:100%;margin:0 0 10px;padding:10px 14px;border:1px solid #9bdedb;border-radius:10px;background:#f4fffe;color:#174b49;font:14px/1.5 Arial,Tahoma,sans-serif;text-align:left';
     wrapper.before(banner);
     collapseReview(doc,panel);
