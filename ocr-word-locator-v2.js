@@ -131,6 +131,12 @@
         }
       }
     }
+    // '+' separates poster phrases; a model suggestion spanning it is not a word.
+    for(const li of panel.querySelectorAll('li')){
+      const wrong=li.querySelector('mark')?.textContent.trim()||'';
+      const replacement=li.textContent.split('→')[1]?.trim()||'';
+      if(wrong.includes('+')||replacement.includes('+'))li.remove();
+    }
     // The model can omit a clear typo even when OCR locates its exact glyphs.
     // Add only high-confidence, uniquely located spellings from the small
     // dictionary; uncertain OCR readings stay in the review list below.
