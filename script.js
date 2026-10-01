@@ -351,9 +351,9 @@ function toBrowserOcrPayload(ocr) {
   return {version:1, engine:'tesseract-browser-7', width:ocr.width, height:ocr.height, regions};
 }
 
-let comparisonBusy = false;
+let requestBusy = false;
 async function sendToN8N() {
-  if (comparisonBusy) return;
+  if (requestBusy) return;
   const fileA = fileAInput.files[0];
   const fileB = fileBInput.files[0];
   const mode = modeSelect.value;
@@ -374,6 +374,12 @@ async function sendToN8N() {
     return;
   }
 
+  requestBusy = true;
+  const submitButton = document.querySelector('.submit-button');
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.setAttribute('aria-busy', 'true');
+  }
   showCheckingState();
   resultBox.classList.remove("has-result");
   statusText.textContent = "กำลังประมวลผล";
@@ -381,7 +387,6 @@ async function sendToN8N() {
   try {
     let browserLocator = null;
     if (mode === 'compare') {
-      comparisonBusy = true;
       const result = await HooHooCompare.compare(fileA, fileB, message => {
         statusText.textContent = message;
       });
@@ -482,7 +487,11 @@ ${JSON.stringify(json, null, 2)}
     resultBox.textContent = `ERROR:\n${error}`;
     statusText.textContent = "ประมวลผลไม่สำเร็จ";
   } finally {
-    comparisonBusy = false;
+    requestBusy = false;
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.removeAttribute('aria-busy');
+    }
   }
 }
 
