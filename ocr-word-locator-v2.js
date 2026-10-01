@@ -14,7 +14,7 @@
   }
   function addOverlay(doc,wrapper,match,ocr,original,corrected,verified=true){
     const [x,y,r,b]=match.box,mark=doc.createElement('div'),label=doc.createElement('div');
-    const baseline=Math.min(b,Math.max(y,match.underlineY??b));
+    const middle=Math.min(b,Math.max(y,match.strikeY??(y+b)/2));
     const color=verified?'#dc2626':'#b45309';
     let aboveGap=Infinity,belowGap=Infinity;
     for(const row of ocr.lines||[]){
@@ -28,8 +28,8 @@
     const below=aboveGap<36&&belowGap>aboveGap;
     mark.className=verified?'verified-spelling-mark':'review-spelling-mark';mark.title=(verified?'คำผิดที่ยืนยัน: ':'คำแนะนำให้ตรวจทาน: ')+original+' → '+corrected;
     mark.setAttribute('aria-label',mark.title);
-    mark.style.cssText='position:absolute;height:0;background:none;border-bottom:3px '+(verified?'solid ':'dashed ')+color+';z-index:3;pointer-events:auto;';
-    mark.style.left=x/ocr.width*100+'%';mark.style.top=baseline/ocr.height*100+'%';
+    mark.style.cssText='position:absolute;height:0;background:none;border-top:3px '+(verified?'solid ':'dashed ')+color+';z-index:3;pointer-events:auto;';
+    mark.style.left=x/ocr.width*100+'%';mark.style.top=middle/ocr.height*100+'%';
     mark.style.width=(r-x)/ocr.width*100+'%';
     label.className=verified?'verified-spelling-correction':'review-spelling-correction';
     label.textContent='→ '+corrected;label.title=mark.title;label.setAttribute('aria-label',mark.title);
@@ -37,14 +37,12 @@
     label.style.left=(x+r)/2/ocr.width*100+'%';label.style.top=(below?Math.min(ocr.height,b+5):Math.max(0,y-5))/ocr.height*100+'%';
     wrapper.append(mark,label);
   }
-  function underlineY(glyphs){
+  function strikeY(glyphs){
     if(!glyphs?.length)return null;
-    const median=values=>{const sorted=[...values].sort((a,b)=>a-b);return sorted[Math.floor(sorted.length/2)];};
-    const bottoms=glyphs.map(g=>g.box[3]),heights=glyphs.map(g=>g.box[3]-g.box[1]);
-    const typicalBottom=median(bottoms),maxBottom=Math.max(...bottoms);
-    // Thai vowels sometimes receive a symbol box that reaches into the next
-    // printed line. Do not drag the underline down with that outlier.
-    return maxBottom-typicalBottom>Math.max(10,median(heights)*.55)?typicalBottom:maxBottom;
+    // Use the median glyph center so tall Thai vowel boxes and descenders do
+    // not pull the strike through above or below the printed letter bodies.
+    const centers=glyphs.map(g=>(g.box[1]+g.box[3])/2).sort((a,b)=>a-b);
+    return centers[Math.floor(centers.length/2)];
   }
   function lines(data){
     const out=[];
@@ -92,7 +90,7 @@
         const thaiJoined=startBoundary&&!endBoundary&&word.length>=5&&/^[\u0E00-\u0E7F]+$/.test(word);
         if(startBoundary&&(endBoundary||thaiJoined)&&gs.length&&gs[0].start===at&&gs.at(-1).end===end&&
             !/^[\p{M}]/u.test(row.text.slice(end))){
-          hits.push({box:union(gs.map(g=>g.box)),underlineY:underlineY(gs),line:row.text});
+          hits.push({box:union(gs.map(g=>g.box)),strikeY:strikeY(gs),line:row.text});
         }
         from=at+Math.max(1,word.length);
       }
@@ -270,7 +268,7 @@
     const heading=panel.querySelector('h3');if(heading)heading.textContent='คำแนะนำที่ต้องตรวจทาน ('+count+')';
     const notice=doc.createElement('p');notice.textContent='สีแดงคือคู่คำที่ผ่านกฎสะกด สีส้มคือคำแนะนำที่ OCR พบตำแหน่งจริงแต่ยังต้องตรวจทาน ไม่ได้แก้ไขไฟล์ต้นฉบับ และอาจตรวจคำผิดได้ไม่ครบ';panel.prepend(notice);
     const status=panel.querySelector('.location-status');if(status)status.textContent='ขีดแดง '+verifiedCount+' จุด · ขีดส้ม '+(located-verifiedCount)+' จุด · ยังขีดไม่ได้ '+unlocated+' รายการ';
-    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · inline-word-10';
+    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · strike-word-11';
     const banner=doc.createElement('p');
     banner.className='result-location-summary';
     banner.textContent='คำแนะนำ '+count+' รายการ · พบตำแหน่งบนภาพ '+located+' รายการ · ยังขีดไม่ได้ '+unlocated+' รายการ';
