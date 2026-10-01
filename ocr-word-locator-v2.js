@@ -222,6 +222,9 @@
       const replacement=li.textContent.split('→')[1]?.trim()||'';
       if(wrong.includes('+')||replacement.includes('+')||poster&&wrong==='/ป'&&replacement==='AI'||
         wrong==='ใบแจ้งหนี'&&ocr?.confirmed?.includes('ใบแจ้งหนี้'))li.remove();
+      // "โอนเงินผ่านบัญชี" is a valid payment instruction. A model's
+      // synonym replacement for ผ่าน must not become a spelling mark.
+      else if(wrong==='ผ่าน'&&ocr&&/โอนเงินผ่านบัญชี/.test(locateBest(ocr,wrong).line||''))li.remove();
     }
     // The model can omit a clear typo even when OCR locates its exact glyphs.
     // Add only high-confidence, uniquely located spellings from the small
@@ -268,7 +271,7 @@
     const heading=panel.querySelector('h3');if(heading)heading.textContent='คำแนะนำที่ต้องตรวจทาน ('+count+')';
     const notice=doc.createElement('p');notice.textContent='สีแดงคือคู่คำที่ผ่านกฎสะกด สีส้มคือคำแนะนำที่ OCR พบตำแหน่งจริงแต่ยังต้องตรวจทาน ไม่ได้แก้ไขไฟล์ต้นฉบับ และอาจตรวจคำผิดได้ไม่ครบ';panel.prepend(notice);
     const status=panel.querySelector('.location-status');if(status)status.textContent='ขีดแดง '+verifiedCount+' จุด · ขีดส้ม '+(located-verifiedCount)+' จุด · ยังขีดไม่ได้ '+unlocated+' รายการ';
-    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · strike-word-12';
+    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · strike-word-13';
     const banner=doc.createElement('p');
     banner.className='result-location-summary';
     banner.textContent='คำแนะนำ '+count+' รายการ · พบตำแหน่งบนภาพ '+located+' รายการ · ยังขีดไม่ได้ '+unlocated+' รายการ';
