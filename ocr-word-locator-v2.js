@@ -83,11 +83,11 @@
         const end=at+word.length,gs=row.glyphs.filter(g=>g.end>at&&g.start<end);
         // Partial glyphs and combining marks belonging to the next character
         // cannot be treated as reliable word boundaries.
-        // Thai word segmentation can merge a heading word with the next word
-        // (for example "วันกํานดชําระ"). A unique literal glyph sequence with
-        // a valid start boundary is still safe to locate without its end one.
+        // Thai segmentation can join a short misspelling to the following
+        // word (for example "เงนมาก"). Exact glyphs and a unique match are
+        // still sufficient to place a review mark at those printed letters.
         const startBoundary=boundaries.has(at),endBoundary=boundaries.has(end);
-        const thaiJoined=startBoundary&&!endBoundary&&word.length>=5&&/^[\u0E00-\u0E7F]+$/.test(word);
+        const thaiJoined=startBoundary&&!endBoundary&&word.length>=3&&/^[\u0E00-\u0E7F]+$/.test(word);
         if(startBoundary&&(endBoundary||thaiJoined)&&gs.length&&gs[0].start===at&&gs.at(-1).end===end&&
             !/^[\p{M}]/u.test(row.text.slice(end))){
           hits.push({box:union(gs.map(g=>g.box)),strikeY:strikeY(gs),line:row.text});
@@ -100,6 +100,11 @@
   function locateBest(ocr,word){
     const primary=locate(ocr.lines,word);
     return primary.box?primary:locate(ocr.refinedLines||[],word);
+  }
+  function differsOnlyByThaiTone(a,b){
+    if(!a||!b||a===b)return false;
+    const strip=s=>s.normalize('NFC').replace(/[\u0E48-\u0E4B]/g,'');
+    return strip(a)===strip(b);
   }
   // OCR sometimes silently inserts or drops Thai marks in a long document.
   // Re-read only words likely affected, using their first-pass glyph boxes to
@@ -220,7 +225,7 @@
     for(const li of panel.querySelectorAll('li')){
       const wrong=li.querySelector('mark')?.textContent.trim()||'';
       const replacement=li.textContent.split('→')[1]?.trim()||'';
-      if(wrong.includes('+')||replacement.includes('+')||poster&&wrong==='/ป'&&replacement==='AI'||
+      if(wrong.includes('+')||replacement.includes('+')||differsOnlyByThaiTone(wrong,replacement)||poster&&wrong==='/ป'&&replacement==='AI'||
         wrong==='ใบแจ้งหนี'&&ocr?.confirmed?.includes('ใบแจ้งหนี้'))li.remove();
       // "โอนเงินผ่านบัญชี" is a valid payment instruction. A model's
       // synonym replacement for ผ่าน must not become a spelling mark.
@@ -271,7 +276,7 @@
     const heading=panel.querySelector('h3');if(heading)heading.textContent='คำแนะนำที่ต้องตรวจทาน ('+count+')';
     const notice=doc.createElement('p');notice.textContent='สีแดงคือคู่คำที่ผ่านกฎสะกด สีส้มคือคำแนะนำที่ OCR พบตำแหน่งจริงแต่ยังต้องตรวจทาน ไม่ได้แก้ไขไฟล์ต้นฉบับ และอาจตรวจคำผิดได้ไม่ครบ';panel.prepend(notice);
     const status=panel.querySelector('.location-status');if(status)status.textContent='ขีดแดง '+verifiedCount+' จุด · ขีดส้ม '+(located-verifiedCount)+' จุด · ยังขีดไม่ได้ '+unlocated+' รายการ';
-    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · strike-word-13';
+    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · strike-word-14';
     const banner=doc.createElement('p');
     banner.className='result-location-summary';
     banner.textContent='คำแนะนำ '+count+' รายการ · พบตำแหน่งบนภาพ '+located+' รายการ · ยังขีดไม่ได้ '+unlocated+' รายการ';
