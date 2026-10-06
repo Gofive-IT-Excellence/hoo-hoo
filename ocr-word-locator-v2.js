@@ -102,7 +102,7 @@
   }
   function locateBest(ocr,word){
     const primary=locate(ocr.lines,word);
-    return primary.box?primary:locate(ocr.refinedLines||[],word);
+    return primary.box?primary:(ocr.pixelCorrections||[]).find(c=>c.wrong===word)||locate(ocr.refinedLines||[],word);
   }
   function differsOnlyByThaiTone(a,b){
     if(!a||!b||a===b)return false;
@@ -112,8 +112,39 @@
   // OCR sometimes silently inserts or drops Thai marks in a long document.
   // Re-read only words likely affected, using their first-pass glyph boxes to
   // crop the actual pixels. The second pass keeps its own glyph coordinates.
+  // A vowel mai-han-akat and a mai-ek are separate upper marks in clear,
+  // non-touching print. Only flag the one-mark case on a plain light background.
+  // Joined marks, small lettering and noise remain uncertain.
+  function missingStackedTone(image){
+    const {width:w,height:h,data}=image;
+    if(w<30||h<35||w*h>1000000)return false;
+    const ink=new Uint8Array(w*h),seen=new Uint8Array(w*h),parts=[];let light=0;
+    for(let i=0;i<ink.length;i++){
+      const j=i*4,r=data[j],g=data[j+1],b=data[j+2];
+      if(Math.min(r,g,b)>210)light++;
+      ink[i]=Math.max(r,g,b)<180&&data[j+3]>200?1:0;
+    }
+    if(light/ink.length<.65)return false;
+    for(let i=0;i<ink.length;i++){
+      if(!ink[i]||seen[i])continue;
+      const queue=[i];seen[i]=1;let n=0,x0=w,y0=h,x1=0,y1=0;
+      while(queue.length){
+        const at=queue.pop(),x=at%w,y=Math.floor(at/w);n++;
+        x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y);
+        for(const next of [x?at-1:-1,x<w-1?at+1:-1,y?at-w:-1,y<h-1?at+w:-1])
+          if(next>=0&&ink[next]&&!seen[next]){seen[next]=1;queue.push(next);}
+      }
+      if(n>=Math.max(6,w*h*.0005))parts.push({n,x0,y0,x1,y1,height:y1-y0+1,width:x1-x0+1});
+    }
+    const tallest=Math.max(0,...parts.map(p=>p.height));
+    const bodies=parts.filter(p=>p.height>=tallest*.55);
+    if(bodies.length<3||bodies.length>7)return false;
+    const tops=bodies.map(p=>p.y0).sort((a,b)=>a-b),bodyTop=tops[Math.floor(tops.length/2)];
+    const upper=parts.filter(p=>p.y1<bodyTop-2);
+    return upper.length===1&&upper[0].width/upper[0].height>=1.4&&upper[0].height>=4;
+  }
   async function refineThaiMarks(worker,canvas,rows){
-    const refinedLines=[],confirmed=new Set();
+    const refinedLines=[],pixelCorrections=[],confirmed=new Set();
     const checks=[
       {search:'รายละเอียด',wrong:'รายล่ะเอียด',mode:'7',scale:1},
       {search:'ทั้งหมด',wrong:'ทังหมด',mode:'7',scale:2},
@@ -135,6 +166,14 @@
       // A duplicate phrase cannot be assigned a correction by guessing.
       if(matches.length!==1)continue;
       const {box:[x,y,r,b],row}=matches[0],pad=12;
+      if(check.search==='ฝรั่ง'){
+        const sx=Math.max(0,Math.floor(x)),sy=Math.max(0,Math.floor(y-20));
+        const sw=Math.min(canvas.width-sx,Math.ceil(r)-sx),sh=Math.min(canvas.height-sy,Math.ceil(b+4)-sy);
+        if(sw>0&&sh>0&&missingStackedTone(canvas.getContext('2d').getImageData(sx,sy,sw,sh)))
+          pixelCorrections.push({wrong:'ฝรัง',correct:'ฝรั่ง',box:[x,y,r,b],line:row.text,
+            verification:'review',strikeY:(y+b)/2});
+      }
+
       const lineLeft=Math.min(...row.glyphs.map(g=>g.box[0]));
       const left=Math.max(0,Math.floor(Math.max(x-200,lineLeft)-pad)),top=Math.max(0,Math.floor(y-pad));
       const right=Math.min(canvas.width,Math.ceil(r+pad)),bottom=Math.min(canvas.height,Math.ceil(b+pad));
@@ -161,7 +200,7 @@
         }
       }
     }
-    return {refinedLines,confirmed:[...confirmed]};
+    return {refinedLines,pixelCorrections,confirmed:[...confirmed]};
   }
   async function read(file,progress=()=>{}){
     const im=await createImageBitmap(file);let worker;
@@ -276,7 +315,7 @@
         const note=doc.createElement('span');note.textContent=match.reason==='ambiguous'?' — OCR พบหลายตำแหน่ง โปรดตรวจทาน':' — ยังยืนยันตำแหน่งไม่ได้';li.append(note);unlocated++;continue;
       }
       for(const hit of matches.length?matches:[match]){
-        const verified=canMark(original,corrected,hit.line);
+        const verified=hit.verification!=='review'&&canMark(original,corrected,hit.line);
         addOverlay(doc,wrapper,hit,ocr,original,corrected,verified);
         located++;if(verified)verifiedCount++;
       }
@@ -285,7 +324,7 @@
     const heading=panel.querySelector('h3');if(heading)heading.textContent='คำแนะนำที่ต้องตรวจทาน ('+count+')';
     const notice=doc.createElement('p');notice.textContent='สีแดงคือคู่คำที่ผ่านกฎสะกด สีส้มคือคำแนะนำที่ OCR พบตำแหน่งจริงแต่ยังต้องตรวจทาน ไม่ได้แก้ไขไฟล์ต้นฉบับ และอาจตรวจคำผิดได้ไม่ครบ';panel.prepend(notice);
     const status=panel.querySelector('.location-status');if(status)status.textContent='ขีดแดง '+verifiedCount+' จุด · ขีดส้ม '+(located-verifiedCount)+' จุด · ยังขีดไม่ได้ '+unlocated+' รายการ';
-    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · strike-word-19';
+    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · strike-word-20';
     const banner=doc.createElement('p');
     banner.className='result-location-summary';
     banner.textContent='คำแนะนำ '+count+' รายการ · พบตำแหน่งบนภาพ '+located+' รายการ · ยังขีดไม่ได้ '+unlocated+' รายการ';
@@ -354,7 +393,7 @@
       return {html:'<!doctype html>'+doc.documentElement.outerHTML,count};
     }finally{await pdf.destroy();}
   }
-  const api={lines,locate,read,reanchor,preserveOriginal,canMark,annotatePdf};
+  const api={missingStackedTone,lines,locate,read,reanchor,preserveOriginal,canMark,annotatePdf};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   else root.HooHooWordLocator=api;
 })(typeof window==='undefined'?globalThis:window);
