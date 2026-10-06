@@ -4,7 +4,7 @@
   const valid=b=>Array.isArray(b)&&b.length===4&&b.every(Number.isFinite)&&b[2]>b[0]&&b[3]>b[1];
   const union=bs=>[Math.min(...bs.map(b=>b[0])),Math.min(...bs.map(b=>b[1])),Math.max(...bs.map(b=>b[2])),Math.max(...bs.map(b=>b[3]))];
   // Narrow spelling rules; never treat an arbitrary AI replacement as verified.
-  const clearPairs=new Map(Object.entries({'อนุญาติ':'อนุญาต','ประมวณผล':'ประมวลผล','บริสัท':'บริษัท','ข้อมุล':'ข้อมูล','ข้อตวาม':'ข้อความ','บันทก':'บันทึก','ลกษณะ':'ลักษณะ','กำนด':'กำหนด','กํานด':'กำหนด','หน่ยว':'หน่วย','รายล่ะเอียด':'รายละเอียด','ทังหมด':'ทั้งหมด','ปรากฎ':'ปรากฏ','สังเกตุ':'สังเกต','คำนวน':'คำนวณ','บอกล':'บอกลา','วิดีโด':'วิดีโอ','พรีเซนต':'พรีเซนต์','Goegle':'Google','วิดิทัศน์':'วีดิทัศน์','วิดีทัศน์':'วีดิทัศน์','วีดีทัศน์':'วีดิทัศน์','ประศบภัย':'ประสบภัย','ชวย':'ช่วย','ผู':'ผู้','ทวม':'ท่วม','ภากไต้':'ภาคใต้','ฝรัง':'ฝรั่ง','ได':'ได้','อยา':'อย่า','ประโยบ':'ประโยค','ทก':'ทุก','จรง':'จริง'}));
+  const clearPairs=new Map(Object.entries({'อนุญาติ':'อนุญาต','ประมวณผล':'ประมวลผล','บริสัท':'บริษัท','ข้อมุล':'ข้อมูล','ข้อตวาม':'ข้อความ','บันทก':'บันทึก','ลกษณะ':'ลักษณะ','กำนด':'กำหนด','กํานด':'กำหนด','หน่ยว':'หน่วย','รายล่ะเอียด':'รายละเอียด','ทังหมด':'ทั้งหมด','ปรากฎ':'ปรากฏ','สังเกตุ':'สังเกต','คำนวน':'คำนวณ','บอกล':'บอกลา','วิดีโด':'วิดีโอ','พรีเซนต':'พรีเซนต์','Goegle':'Google','วิดิทัศน์':'วีดิทัศน์','วิดีทัศน์':'วีดิทัศน์','วีดีทัศน์':'วีดิทัศน์','ประศบภัย':'ประสบภัย','ชวย':'ช่วย','ผู':'ผู้','ทวม':'ท่วม','ภากไต้':'ภาคใต้','ฝรัง':'ฝรั่ง','ได':'ได้','อยา':'อย่า','ประโยบ':'ประโยค','ทก':'ทุก','จรง':'จริง','จินตนากาน':'จินตนาการ','Banano':'Banana'}));
   function canMark(original,corrected,line){
     if(clearPairs.get(original)===corrected)return true;
     if(original==='ผู'&&corrected==='ผู้')return /ผู(?:ป่วย|ถือหุ้น|ใช้งาน|ให้บริการ)/.test(line);
@@ -231,6 +231,38 @@
         if(second.length>=selected.length&&secondQuality.chars>=firstQuality.chars*.9&&
            secondQuality.confidence>=firstQuality.confidence)selected=second;
       }
+      // Colourful posters can lose whole headings in the primary pass.
+      // Use the green channel to distinguish yellow/white ink from dark red,
+      // preserving original pixel coordinates; replace only clearly weaker rows.
+      const pixels=c.getContext('2d').getImageData(0,0,c.width,c.height);
+      let saturated=0;
+      for(let i=0;i<pixels.data.length;i+=4)if(Math.max(pixels.data[i],pixels.data[i+1],pixels.data[i+2])-Math.min(pixels.data[i],pixels.data[i+1],pixels.data[i+2])>70)saturated++;
+      if(selected.length<30&&saturated/(c.width*c.height)>.1){
+        const contrast=document.createElement('canvas');contrast.width=c.width;contrast.height=c.height;
+        const ctx=contrast.getContext('2d');
+        for(let i=0;i<pixels.data.length;i+=4){const value=pixels.data[i+1]>=135?0:255;pixels.data[i]=pixels.data[i+1]=pixels.data[i+2]=value;pixels.data[i+3]=255;}
+        ctx.putImageData(pixels,0,0);
+        try{
+          await worker.setParameters({tessedit_pageseg_mode:'11'});
+          const extraRows=lines((await worker.recognize(contrast,{}, {text:true,blocks:true})).data);
+          for(const row of extraRows){
+            if(row.confidence<80||!row.glyphs.length)continue;
+            const box=union(row.glyphs.map(g=>g.box));if(box[3]-box[1]<25)continue;
+            const area=(box[2]-box[0])*(box[3]-box[1]);
+            const overlaps=selected.map((old,index)=>({old,index})).filter(({old})=>{
+              const other=union(old.glyphs.map(g=>g.box));
+              const intersection=Math.max(0,Math.min(box[2],other[2])-Math.max(box[0],other[0]))*Math.max(0,Math.min(box[3],other[3])-Math.max(box[1],other[1]));
+              return intersection/Math.min(area,(other[2]-other[0])*(other[3]-other[1]))>.5&&Math.abs(strikeY(row.glyphs)-strikeY(old.glyphs))<Math.min(box[3]-box[1],other[3]-other[1])*.6;
+            });
+            if(!overlaps.length)selected.push(row);
+            else if(overlaps.every(({old})=>row.confidence>old.confidence+10&&row.text.length>=old.text.length*.8)){
+              const replaced=new Set(overlaps.map(({index})=>index));
+              selected=selected.filter((old,index)=>!replaced.has(index));selected.push(row);
+            }
+          }
+        }catch(error){console.warn('Colour contrast OCR unavailable',error);}
+        contrast.width=contrast.height=0;
+      }
       const extra=await refineThaiMarks(worker,c,selected);
       return {width:im.width,height:im.height,lines:selected,...extra};
     }finally{im.close();if(worker)await worker.terminate();}
@@ -282,6 +314,7 @@
       const existing=new Set([...panel.querySelectorAll('li mark')].map(n=>n.textContent.trim().normalize('NFC')));
       let list=panel.querySelector('ul');
       for(const [wrong,correct] of clearPairs){
+        if(wrong==='Banano'&&!ocr.lines.some(r=>/NanoBanana/.test(r.text.replace(/\s/g,''))))continue;
         if(existing.has(wrong)||!(locateBest(ocr,wrong).box||locate(ocr.lines,wrong,true).length))continue;
         if(!list){list=doc.createElement('ul');panel.append(list);}
         const li=doc.createElement('li'),mark=doc.createElement('mark'),bold=doc.createElement('b');
@@ -324,7 +357,7 @@
     const heading=panel.querySelector('h3');if(heading)heading.textContent='คำแนะนำที่ต้องตรวจทาน ('+count+')';
     const notice=doc.createElement('p');notice.textContent='สีแดงคือคู่คำที่ผ่านกฎสะกด สีส้มคือคำแนะนำที่ OCR พบตำแหน่งจริงแต่ยังต้องตรวจทาน ไม่ได้แก้ไขไฟล์ต้นฉบับ และอาจตรวจคำผิดได้ไม่ครบ';panel.prepend(notice);
     const status=panel.querySelector('.location-status');if(status)status.textContent='ขีดแดง '+verifiedCount+' จุด · ขีดส้ม '+(located-verifiedCount)+' จุด · ยังขีดไม่ได้ '+unlocated+' รายการ';
-    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · strike-word-21';
+    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · strike-word-22';
     const banner=doc.createElement('p');
     banner.className='result-location-summary';
     banner.textContent='คำแนะนำ '+count+' รายการ · พบตำแหน่งบนภาพ '+located+' รายการ · ยังขีดไม่ได้ '+unlocated+' รายการ';
