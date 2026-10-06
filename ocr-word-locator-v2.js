@@ -4,7 +4,7 @@
   const valid=b=>Array.isArray(b)&&b.length===4&&b.every(Number.isFinite)&&b[2]>b[0]&&b[3]>b[1];
   const union=bs=>[Math.min(...bs.map(b=>b[0])),Math.min(...bs.map(b=>b[1])),Math.max(...bs.map(b=>b[2])),Math.max(...bs.map(b=>b[3]))];
   // Narrow spelling rules; never treat an arbitrary AI replacement as verified.
-  const clearPairs=new Map(Object.entries({'อนุญาติ':'อนุญาต','ประมวณผล':'ประมวลผล','บริสัท':'บริษัท','ข้อมุล':'ข้อมูล','ข้อตวาม':'ข้อความ','บันทก':'บันทึก','ลกษณะ':'ลักษณะ','กำนด':'กำหนด','กํานด':'กำหนด','หน่ยว':'หน่วย','รายล่ะเอียด':'รายละเอียด','ทังหมด':'ทั้งหมด','ปรากฎ':'ปรากฏ','สังเกตุ':'สังเกต','คำนวน':'คำนวณ','บอกล':'บอกลา','วิดีโด':'วิดีโอ','พรีเซนต':'พรีเซนต์','Goegle':'Google'}));
+  const clearPairs=new Map(Object.entries({'อนุญาติ':'อนุญาต','ประมวณผล':'ประมวลผล','บริสัท':'บริษัท','ข้อมุล':'ข้อมูล','ข้อตวาม':'ข้อความ','บันทก':'บันทึก','ลกษณะ':'ลักษณะ','กำนด':'กำหนด','กํานด':'กำหนด','หน่ยว':'หน่วย','รายล่ะเอียด':'รายละเอียด','ทังหมด':'ทั้งหมด','ปรากฎ':'ปรากฏ','สังเกตุ':'สังเกต','คำนวน':'คำนวณ','บอกล':'บอกลา','วิดีโด':'วิดีโอ','พรีเซนต':'พรีเซนต์','Goegle':'Google','วิดิทัศน์':'วีดิทัศน์','วิดีทัศน์':'วีดิทัศน์','วีดีทัศน์':'วีดิทัศน์'}));
   function canMark(original,corrected,line){
     if(clearPairs.get(original)===corrected)return true;
     if(original==='ผู'&&corrected==='ผู้')return /ผู(?:ป่วย|ถือหุ้น|ใช้งาน|ให้บริการ)/.test(line);
@@ -60,7 +60,7 @@
       if(text.trim())out.push({text:text.trimEnd(),glyphs,confidence:l.confidence});
     }return out;
   }
-  function locate(rows,original){
+  function locate(rows,original,allMatches=false){
     const word=String(original||'').normalize('NFC').replace(/\s/g,'');
     if(!word)return {reason:'empty'};
     const hits=[];
@@ -88,13 +88,15 @@
         // still sufficient to place a review mark at those printed letters.
         const startBoundary=boundaries.has(at),endBoundary=boundaries.has(end);
         const thaiJoined=startBoundary&&!endBoundary&&word.length>=3&&/^[\u0E00-\u0E7F]+$/.test(word);
-        if(startBoundary&&(endBoundary||thaiJoined)&&gs.length&&gs[0].start===at&&gs.at(-1).end===end&&
+        const knownVideo=/^(วิดิทัศน์|วิดีทัศน์|วีดีทัศน์)$/.test(word);
+        if((knownVideo||startBoundary&&(endBoundary||thaiJoined))&&gs.length&&gs[0].start===at&&gs.at(-1).end===end&&
             !/^[\p{M}]/u.test(row.text.slice(end))){
           hits.push({box:union(gs.map(g=>g.box)),strikeY:strikeY(gs),line:row.text});
         }
         from=at+Math.max(1,word.length);
       }
     }
+    if(allMatches)return hits;
     return hits.length===1?hits[0]:{reason:hits.length?'ambiguous':'not-found'};
   }
   function locateBest(ocr,word){
@@ -238,7 +240,7 @@
       const existing=new Set([...panel.querySelectorAll('li mark')].map(n=>n.textContent.trim().normalize('NFC')));
       let list=panel.querySelector('ul');
       for(const [wrong,correct] of clearPairs){
-        if(existing.has(wrong)||!locateBest(ocr,wrong).box)continue;
+        if(existing.has(wrong)||!(locateBest(ocr,wrong).box||locate(ocr.lines,wrong,true).length))continue;
         if(!list){list=doc.createElement('ul');panel.append(list);}
         const li=doc.createElement('li'),mark=doc.createElement('mark'),bold=doc.createElement('b');
         mark.textContent=wrong;bold.textContent=correct;li.append(mark,doc.createTextNode(' → '),bold);list.append(li);
@@ -263,20 +265,24 @@
       if(seen.has(key)){li.remove();continue;}seen.add(key);
       if(original.normalize('NFC')===corrected.normalize('NFC')){li.remove();continue;}
       const conflicting=alternatives.get(original.normalize('NFC'))?.size>1;
+      const exactHits=corrected&&ocr&&!conflicting?locate(ocr.lines,original,true):[];
+      const matches=exactHits.length?exactHits:[];
       const match=original==='ฟร!'&&posterFree?posterFree:
         corrected&&ocr&&!conflicting?locateBest(ocr,original):{reason:'unavailable'};
-      if(!match.box){
+      if(!match.box&&!matches.length){
         const note=doc.createElement('span');note.textContent=match.reason==='ambiguous'?' — OCR พบหลายตำแหน่ง โปรดตรวจทาน':' — ยังยืนยันตำแหน่งไม่ได้';li.append(note);unlocated++;continue;
       }
-      const verified=canMark(original,corrected,match.line);
-      addOverlay(doc,wrapper,match,ocr,original,corrected,verified);
-      located++;if(verified)verifiedCount++;
+      for(const hit of matches.length?matches:[match]){
+        const verified=canMark(original,corrected,hit.line);
+        addOverlay(doc,wrapper,hit,ocr,original,corrected,verified);
+        located++;if(verified)verifiedCount++;
+      }
     }
     const count=panel.querySelectorAll('li').length;
     const heading=panel.querySelector('h3');if(heading)heading.textContent='คำแนะนำที่ต้องตรวจทาน ('+count+')';
     const notice=doc.createElement('p');notice.textContent='สีแดงคือคู่คำที่ผ่านกฎสะกด สีส้มคือคำแนะนำที่ OCR พบตำแหน่งจริงแต่ยังต้องตรวจทาน ไม่ได้แก้ไขไฟล์ต้นฉบับ และอาจตรวจคำผิดได้ไม่ครบ';panel.prepend(notice);
     const status=panel.querySelector('.location-status');if(status)status.textContent='ขีดแดง '+verifiedCount+' จุด · ขีดส้ม '+(located-verifiedCount)+' จุด · ยังขีดไม่ได้ '+unlocated+' รายการ';
-    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · strike-word-14';
+    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · strike-word-15';
     const banner=doc.createElement('p');
     banner.className='result-location-summary';
     banner.textContent='คำแนะนำ '+count+' รายการ · พบตำแหน่งบนภาพ '+located+' รายการ · ยังขีดไม่ได้ '+unlocated+' รายการ';
