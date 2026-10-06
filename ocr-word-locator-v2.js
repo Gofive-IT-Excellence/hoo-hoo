@@ -80,7 +80,7 @@
       }
       let from=0,at;
       while((at=row.text.indexOf(word,from))!==-1){
-        if(word==='ได'&&!/^ไดยิน/.test(row.text.slice(at))||word==='อยา'&&!/^อยาเชื่อ/.test(row.text.slice(at))||word==='ผู'&&!/^ผู(?:ประ[สศ]บภัย|ป่วย|ใช้งาน|ถือหุ้น)/.test(row.text.slice(at))||word==='ชวย'&&!/^ชวยเหลือ/.test(row.text.slice(at))){from=at+word.length;continue;}
+        if(word==='ได'&&!/^ไดยิน/.test(row.text.slice(at))||word==='อยา'&&!/^อยาเช(?:ื่อ|อ)/.test(row.text.slice(at))||word==='ผู'&&!/^ผู(?:ประ[สศ]บภัย|ป่วย|ใช้งาน|ถือหุ้น)/.test(row.text.slice(at))||word==='ชวย'&&!/^ชวยเหลือ/.test(row.text.slice(at))){from=at+word.length;continue;}
         const end=at+word.length,gs=row.glyphs.filter(g=>g.end>at&&g.start<end);
         // Partial glyphs and combining marks belonging to the next character
         // cannot be treated as reliable word boundaries.
@@ -117,7 +117,9 @@
     const checks=[
       {search:'รายละเอียด',wrong:'รายล่ะเอียด',mode:'7',scale:1},
       {search:'ทั้งหมด',wrong:'ทังหมด',mode:'7',scale:2},
-      {search:'ใบแจ้งหนี',correct:'ใบแจ้งหนี้',mode:'13',scale:1}
+      {search:'ใบแจ้งหนี',correct:'ใบแจ้งหนี้',mode:'13',scale:1},
+      {search:'ฝรั่ง',wrong:'ฝรัง',mode:'7',scale:2},
+      {search:'อย่าเชื่อ',wrong:'อยา',mode:'7',scale:2}
     ];
     for(const check of checks){
       const matches=[];
@@ -283,7 +285,7 @@
     const heading=panel.querySelector('h3');if(heading)heading.textContent='คำแนะนำที่ต้องตรวจทาน ('+count+')';
     const notice=doc.createElement('p');notice.textContent='สีแดงคือคู่คำที่ผ่านกฎสะกด สีส้มคือคำแนะนำที่ OCR พบตำแหน่งจริงแต่ยังต้องตรวจทาน ไม่ได้แก้ไขไฟล์ต้นฉบับ และอาจตรวจคำผิดได้ไม่ครบ';panel.prepend(notice);
     const status=panel.querySelector('.location-status');if(status)status.textContent='ขีดแดง '+verifiedCount+' จุด · ขีดส้ม '+(located-verifiedCount)+' จุด · ยังขีดไม่ได้ '+unlocated+' รายการ';
-    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · strike-word-18';
+    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · strike-word-19';
     const banner=doc.createElement('p');
     banner.className='result-location-summary';
     banner.textContent='คำแนะนำ '+count+' รายการ · พบตำแหน่งบนภาพ '+located+' รายการ · ยังขีดไม่ได้ '+unlocated+' รายการ';
