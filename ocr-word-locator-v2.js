@@ -92,7 +92,7 @@
         const knownSpelling=clearPairs.has(word);
         if((knownSpelling||startBoundary&&(endBoundary||thaiJoined))&&gs.length&&gs[0].start===at&&gs.at(-1).end===end&&
             !/^[\p{M}]/u.test(row.text.slice(end))){
-          hits.push({box:union(gs.map(g=>g.box)),strikeY:strikeY(gs),line:row.text,...(word==='ได'&&/^ไดตาม/.test(row.text.slice(at))?{verification:'review'}:{})});
+          hits.push({box:union(gs.map(g=>g.box)),strikeY:strikeY(gs),line:row.text});
         }
         from=at+Math.max(1,word.length);
       }
