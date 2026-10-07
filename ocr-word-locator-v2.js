@@ -4,7 +4,7 @@
   const valid=b=>Array.isArray(b)&&b.length===4&&b.every(Number.isFinite)&&b[2]>b[0]&&b[3]>b[1];
   const union=bs=>[Math.min(...bs.map(b=>b[0])),Math.min(...bs.map(b=>b[1])),Math.max(...bs.map(b=>b[2])),Math.max(...bs.map(b=>b[3]))];
   // Narrow spelling rules; never treat an arbitrary AI replacement as verified.
-  const clearPairs=new Map(Object.entries({'อนุญาติ':'อนุญาต','ประมวณผล':'ประมวลผล','บริสัท':'บริษัท','ข้อมุล':'ข้อมูล','ข้อตวาม':'ข้อความ','บันทก':'บันทึก','ลกษณะ':'ลักษณะ','กำนด':'กำหนด','กํานด':'กำหนด','หน่ยว':'หน่วย','รายล่ะเอียด':'รายละเอียด','ทังหมด':'ทั้งหมด','ปรากฎ':'ปรากฏ','สังเกตุ':'สังเกต','คำนวน':'คำนวณ','บอกล':'บอกลา','วิดีโด':'วิดีโอ','พรีเซนต':'พรีเซนต์','Goegle':'Google','วิดิทัศน์':'วีดิทัศน์','วิดีทัศน์':'วีดิทัศน์','วีดีทัศน์':'วีดิทัศน์','ประศบภัย':'ประสบภัย','ชวย':'ช่วย','ผู':'ผู้','ทวม':'ท่วม','ภากไต้':'ภาคใต้','ฝรัง':'ฝรั่ง','ได':'ได้','อยา':'อย่า','ประโยบ':'ประโยค','ทก':'ทุก','จรง':'จริง','จินตนากาน':'จินตนาการ','Banano':'Banana'}));
+  const clearPairs=new Map(Object.entries({'อนุญาติ':'อนุญาต','ประมวณผล':'ประมวลผล','บริสัท':'บริษัท','ข้อมุล':'ข้อมูล','ข้อตวาม':'ข้อความ','บันทก':'บันทึก','ลกษณะ':'ลักษณะ','กำนด':'กำหนด','กํานด':'กำหนด','หน่ยว':'หน่วย','รายล่ะเอียด':'รายละเอียด','ทังหมด':'ทั้งหมด','ปรากฎ':'ปรากฏ','สังเกตุ':'สังเกต','คำนวน':'คำนวณ','บอกล':'บอกลา','วิดีโด':'วิดีโอ','พรีเซนต':'พรีเซนต์','Goegle':'Google','วิดิทัศน์':'วีดิทัศน์','วิดีทัศน์':'วีดิทัศน์','วีดีทัศน์':'วีดิทัศน์','ประศบภัย':'ประสบภัย','ชวย':'ช่วย','ผู':'ผู้','ทวม':'ท่วม','ภากไต้':'ภาคใต้','ฝรัง':'ฝรั่ง','ได':'ได้','อยา':'อย่า','ประโยบ':'ประโยค','ทก':'ทุก','จรง':'จริง','จินตนากาน':'จินตนาการ','Banano':'Banana','เงน':'เงิน','คณ':'คุณ','สามารด':'สามารถ','สถานการณ':'สถานการณ์','ชอย':'ชอบ','อินโฟกราฟฟิก':'อินโฟกราฟิก'}));
   function canMark(original,corrected,line){
     if(clearPairs.get(original)===corrected)return true;
     if(original==='ผู'&&corrected==='ผู้')return /ผู(?:ป่วย|ถือหุ้น|ใช้งาน|ให้บริการ)/.test(line);
@@ -80,7 +80,7 @@
       }
       let from=0,at;
       while((at=row.text.indexOf(word,from))!==-1){
-        if(word==='ทก'&&!/^ทกเรื/.test(row.text.slice(at))||word==='ได'&&!/^ไดยิน/.test(row.text.slice(at))||word==='อยา'&&!/^อยาเช(?:ื่อ|อ)/.test(row.text.slice(at))||word==='ผู'&&!/^ผู(?:ประ[สศ]บภัย|ป่วย|ใช้งาน|ถือหุ้น)/.test(row.text.slice(at))||word==='ชวย'&&!/^ชวยเหลือ/.test(row.text.slice(at))){from=at+word.length;continue;}
+        if(word==='คณ'&&!/^คณ(?:สามารถ|สามารด)/.test(row.text.slice(at))||word==='ชอย'&&!/ไม่$/.test(row.text.slice(0,at))||word==='ทก'&&!/^ทกเรื/.test(row.text.slice(at))||word==='ได'&&!/^ได(?:ยิน|ตาม)/.test(row.text.slice(at))||word==='อยา'&&!/^อยาเช(?:ื่อ|อ)/.test(row.text.slice(at))||word==='ผู'&&!/^ผู(?:ประ[สศ]บภัย|ป่วย|ใช้งาน|ถือหุ้น)/.test(row.text.slice(at))||word==='ชวย'&&!/^ชวยเหลือ/.test(row.text.slice(at))){from=at+word.length;continue;}
         const end=at+word.length,gs=row.glyphs.filter(g=>g.end>at&&g.start<end);
         // Partial glyphs and combining marks belonging to the next character
         // cannot be treated as reliable word boundaries.
@@ -92,7 +92,7 @@
         const knownSpelling=clearPairs.has(word);
         if((knownSpelling||startBoundary&&(endBoundary||thaiJoined))&&gs.length&&gs[0].start===at&&gs.at(-1).end===end&&
             !/^[\p{M}]/u.test(row.text.slice(end))){
-          hits.push({box:union(gs.map(g=>g.box)),strikeY:strikeY(gs),line:row.text});
+          hits.push({box:union(gs.map(g=>g.box)),strikeY:strikeY(gs),line:row.text,...(word==='ได'&&/^ไดตาม/.test(row.text.slice(at))?{verification:'review'}:{})});
         }
         from=at+Math.max(1,word.length);
       }
@@ -102,7 +102,7 @@
   }
   function locateBest(ocr,word){
     const primary=locate(ocr.lines,word);
-    return primary.box?primary:(ocr.pixelCorrections||[]).find(c=>c.wrong===word)||locate(ocr.refinedLines||[],word);
+    return primary.box?primary:(ocr.pixelCorrections||[]).find(c=>c.wrong===word)||locate([...(ocr.refinedLines||[]),...(ocr.alternativeLines||[])],word);
   }
   function differsOnlyByThaiTone(a,b){
     if(!a||!b||a===b)return false;
@@ -211,7 +211,7 @@
       worker=await Tesseract.createWorker('tha+eng',1,{workerPath:base+'worker.min.js',corePath:base+'core',langPath:base+'lang',gzip:false,logger:m=>progress(m.status)});
       await worker.setParameters({tessedit_pageseg_mode:'3'});
       const {data}=await worker.recognize(c,{}, {text:true,blocks:true});
-      let selected=lines(data);
+      let selected=lines(data);const alternativeLines=[];
       const heights=selected.map(row=>{
         const boxes=row.glyphs.map(g=>g.box);
         return boxes.length?Math.max(...boxes.map(b=>b[3]))-Math.min(...boxes.map(b=>b[1])):0;
@@ -230,6 +230,13 @@
         const firstQuality=quality(selected),secondQuality=quality(second);
         if(second.length>=selected.length&&secondQuality.chars>=firstQuality.chars*.9&&
            secondQuality.confidence>=firstQuality.confidence)selected=second;
+      }
+      // Sparse photographs can merge or omit a line in automatic layout mode.
+      // Retain an independent sparse-text reading with its own real glyph boxes.
+      if(selected.length<=15){
+        await worker.setParameters({tessedit_pageseg_mode:'11'});
+        const sparse=lines((await worker.recognize(c,{}, {text:true,blocks:true})).data);
+        alternativeLines.push(...sparse.filter(r=>r.confidence>=80));
       }
       // Colourful posters can lose whole headings in the primary pass.
       // Use the green channel to distinguish yellow/white ink from dark red,
@@ -264,7 +271,7 @@
         contrast.width=contrast.height=0;
       }
       const extra=await refineThaiMarks(worker,c,selected);
-      return {width:im.width,height:im.height,lines:selected,...extra};
+      return {width:im.width,height:im.height,lines:selected,alternativeLines,...extra};
     }finally{im.close();if(worker)await worker.terminate();}
   }
   // Rebuild the result from data, not the backend's executable geometry script.
@@ -295,6 +302,12 @@
           li.title='OCR อ่านคำกลางภาพไม่ชัด กรุณาตรวจทานกับภาพต้นฉบับ';
           li.append(mark,doc.createTextNode(' → '),bold);list.append(li);
         }
+      }
+    }
+    for(const li of panel.querySelectorAll('li')){
+      const mark=li.querySelector('mark'),bold=li.querySelector('b');
+      if(mark?.textContent.trim()==='าฟฟิก'&&bold?.textContent.trim()==='กราฟิก'&&locateBest(ocr,'อินโฟกราฟฟิก').box){
+        mark.textContent='อินโฟกราฟฟิก';bold.textContent='อินโฟกราฟิก';
       }
     }
     // '+' separates poster phrases; a model suggestion spanning it is not a word.
@@ -357,7 +370,7 @@
     const heading=panel.querySelector('h3');if(heading)heading.textContent='คำแนะนำที่ต้องตรวจทาน ('+count+')';
     const notice=doc.createElement('p');notice.textContent='สีแดงคือคู่คำที่ผ่านกฎสะกด สีส้มคือคำแนะนำที่ OCR พบตำแหน่งจริงแต่ยังต้องตรวจทาน ไม่ได้แก้ไขไฟล์ต้นฉบับ และอาจตรวจคำผิดได้ไม่ครบ';panel.prepend(notice);
     const status=panel.querySelector('.location-status');if(status)status.textContent='ขีดแดง '+verifiedCount+' จุด · ขีดส้ม '+(located-verifiedCount)+' จุด · ยังขีดไม่ได้ '+unlocated+' รายการ';
-    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · strike-word-22';
+    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · strike-word-23';
     const banner=doc.createElement('p');
     banner.className='result-location-summary';
     banner.textContent='คำแนะนำ '+count+' รายการ · พบตำแหน่งบนภาพ '+located+' รายการ · ยังขีดไม่ได้ '+unlocated+' รายการ';
