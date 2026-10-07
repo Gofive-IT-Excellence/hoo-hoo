@@ -25,7 +25,7 @@
       if(rb[3]<=y)aboveGap=Math.min(aboveGap,y-rb[3]);
       if(rb[1]>=b)belowGap=Math.min(belowGap,rb[1]-b);
     }
-    const below=aboveGap<36&&belowGap>aboveGap;
+    const below=y<30;
     mark.className=verified?'verified-spelling-mark':'review-spelling-mark';mark.title=(verified?'คำผิดที่ยืนยัน: ':'คำแนะนำให้ตรวจทาน: ')+original+' → '+corrected;
     mark.setAttribute('aria-label',mark.title);
     mark.style.cssText='position:absolute;height:0;background:none;border-top:3px '+(verified?'solid ':'dashed ')+color+';z-index:3;pointer-events:auto;';
