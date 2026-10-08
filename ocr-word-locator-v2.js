@@ -518,7 +518,94 @@
       return {html:'<!doctype html>'+doc.documentElement.outerHTML,count};
     }finally{await pdf.destroy();}
   }
-  const api={missingStackedTone,lines,locate,read,reanchor,preserveOriginal,canMark,annotatePdf};
+// Inspect literal PDF drawing positions, independently of extracted spelling.
+function pdfLowerVowelIssues(operatorList, OPS) {
+  const mul=(a,b)=>[a[0]*b[0]+a[2]*b[1],a[1]*b[0]+a[3]*b[1],a[0]*b[2]+a[2]*b[3],a[1]*b[2]+a[3]*b[3],a[0]*b[4]+a[2]*b[5]+a[4],a[1]*b[4]+a[3]*b[5]+a[5]];
+  let s={ctm:[1,0,0,1,0,0],tm:[1,0,0,1,0,0],x:0,size:12,scale:1,charSpace:0,wordSpace:0,leading:0,last:null};
+  const stack=[],issues=[];
+  const move=(x,y)=>{s.tm=mul(s.tm,[1,0,0,1,x,y]);s.x=0;};
+  const show=chars=>{for(const g of chars||[]){
+    if(typeof g==='number'){s.x-=g*s.size/1000*s.scale;continue;}
+    if(!g||typeof g.unicode!=='string')continue;
+    const m=mul(s.ctm,s.tm),x=m[0]*s.x+m[4],y=m[1]*s.x+m[5];
+    const width=(g.width||0)*s.size/1000*s.scale,worldWidth=Math.abs(m[0]*width);
+    // Rotated/vertical text requires another geometry model; do not guess.
+    const horizontal=Math.abs(m[1])<0.01&&Math.abs(m[2])<0.01&&m[0]>0;
+    if(horizontal&&/^[ุู]$/.test(g.unicode)&&s.last){
+      const b=s.last,gap=x-b.end;
+      if(Math.abs(y-b.y)<Math.abs(s.size*m[3])*0.15&&gap>Math.max(1.5,b.width*0.7)&&gap<Math.abs(s.size*m[0])*4){
+        issues.push({mark:g.unicode,base:b.text,x,y,baseX:b.x,baseEnd:b.end,height:Math.abs(s.size*m[3]),gap});
+      }
+    }
+    if(horizontal&&/^[ก-ฮ]$/.test(g.unicode)&&worldWidth>0)s.last={text:g.unicode,x,y,end:x+worldWidth,width:worldWidth};
+    else if(g.unicode===' ')s.last=null;
+    s.x+=width+s.charSpace*s.scale+(g.isSpace?s.wordSpace*s.scale:0);
+  }};
+  for(let i=0;i<operatorList.fnArray.length;i++){
+    const op=operatorList.fnArray[i],a=operatorList.argsArray[i]||[];
+    if(op===OPS.save)stack.push({...s,ctm:[...s.ctm],tm:[...s.tm]});
+    else if(op===OPS.restore){if(stack.length)s=stack.pop();}
+    else if(op===OPS.transform)s.ctm=mul(s.ctm,a);
+    else if(op===OPS.beginText){s.tm=[1,0,0,1,0,0];s.x=0;s.last=null;}
+    else if(op===OPS.setFont)s.size=a[1];
+    else if(op===OPS.setHScale)s.scale=a[0]/100;
+    else if(op===OPS.setCharSpacing)s.charSpace=a[0];
+    else if(op===OPS.setWordSpacing)s.wordSpace=a[0];
+    else if(op===OPS.setLeading)s.leading=a[0];
+    else if(op===OPS.setTextMatrix){s.tm=[...a];s.x=0;s.last=null;}
+    else if(op===OPS.moveText)move(a[0],a[1]);
+    else if(op===OPS.setLeadingMoveText){s.leading=-a[1];move(a[0],a[1]);}
+    else if(op===OPS.nextLine)move(0,-s.leading);
+    else if(op===OPS.showText)show(a[0]);
+  }
+  return issues.filter((v,i,list)=>!list.slice(0,i).some(p=>Math.abs(p.x-v.x)<0.5&&Math.abs(p.y-v.y)<0.5));
+}
+
+  async function annotatePdfLayout(html,file,progress=()=>{}) {
+    const doc=new DOMParser().parseFromString(html,'text/html');
+    const pdfjs=await import(new URL('vendor/pdfjs/pdf.mjs',document.baseURI).href);
+    pdfjs.GlobalWorkerOptions.workerSrc=new URL('vendor/pdfjs/pdf.worker.mjs',document.baseURI).href;
+    const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+    const pages=[];let count=0;
+    try {
+      if(pdf.numPages>20)throw Error('ตรวจตำแหน่งสระได้ไม่เกิน 20 หน้า กรุณาแบ่งไฟล์');
+      for(let n=1;n<=pdf.numPages;n++){
+        progress('ตรวจตำแหน่งสระบน PDF หน้า '+n+'/'+pdf.numPages);
+        const page=await pdf.getPage(n),ops=await page.getOperatorList();
+        const issues=pdfLowerVowelIssues(ops,pdfjs.OPS);count+=issues.length;pages.push({page,n,issues});
+      }
+      const section=doc.createElement('section');section.style.cssText='padding:16px;border:1px solid #fdba74;border-radius:12px;margin:16px 0;color:#9a3412;background:#fff7ed';
+      const title=doc.createElement('h3');title.textContent='ตรวจตำแหน่งสระ: '+count+' จุดที่ต้องตรวจทาน';section.append(title);
+      const note=doc.createElement('p');note.textContent='ตรวจสระ ุ/ู ที่วางห่างจากพยัญชนะในคำสั่งวาด PDF แยกจากการตรวจคำสะกด กรอบสีส้มคือบริเวณที่ควรตรวจตำแหน่งสระในไฟล์ต้นฉบับ ยังไม่ครอบคลุมสระทุกชนิดหรือ PDF สแกน และไม่ได้ย้ายตัวอักษรในไฟล์';section.append(note);
+      const list=doc.createElement('ul');
+      for(const {n,issues} of pages)for(const issue of issues){const li=doc.createElement('li');li.textContent='หน้า '+n+': สระ '+issue.mark+' ของ “'+issue.base+'” อยู่ห่างไปทางขวา '+issue.gap.toFixed(1)+' pt — ตรวจการจัดวาง '+issue.base+issue.mark;list.append(li);}
+      section.append(list);
+      const target=doc.querySelector('.pdf-overlay-viewer')||doc.querySelector('.pdf-preview');
+      if(target)target.before(section);else doc.body.prepend(section);
+      if(count&&target){
+        const gallery=doc.createElement('div');gallery.style.cssText='background:#27272a;padding:16px';
+        for(const {page,n,issues} of pages){
+          const vp=page.getViewport({scale:2});
+          if(vp.width*vp.height>20000000)throw Error('หน้า PDF ใหญ่เกินสำหรับแสดงตำแหน่งสระ');
+          const canvas=document.createElement('canvas');canvas.width=Math.ceil(vp.width);canvas.height=Math.ceil(vp.height);
+          await page.render({canvasContext:canvas.getContext('2d'),viewport:vp}).promise;
+          const wrap=doc.createElement('div');wrap.style.cssText='position:relative;margin:0 auto 16px;background:white';
+          const img=doc.createElement('img');img.src=canvas.toDataURL('image/png');img.alt='หน้า '+n+' พร้อมจุดตรวจตำแหน่งสระ';img.style.cssText='display:block;width:100%;height:auto';wrap.append(img);
+          for(const issue of issues){
+            const a=vp.convertToViewportPoint(issue.baseX,issue.y+issue.height*.75),b=vp.convertToViewportPoint(issue.x+issue.height*.25,issue.y-issue.height*.4);
+            const mark=doc.createElement('div');mark.title='ตรวจตำแหน่งสระ '+issue.mark+' ของ '+issue.base;
+            mark.style.cssText='position:absolute;box-sizing:border-box;border:2px dashed #f97316;background:#fb923c22;left:'+100*Math.min(a[0],b[0])/vp.width+'%;top:'+100*Math.min(a[1],b[1])/vp.height+'%;width:'+100*Math.abs(b[0]-a[0])/vp.width+'%;height:'+100*Math.abs(b[1]-a[1])/vp.height+'%;';wrap.append(mark);
+          }
+          gallery.append(wrap);canvas.width=canvas.height=0;page.cleanup();
+        }
+        target.replaceWith(gallery);
+        const summary=doc.querySelector('.summary-box');if(summary)summary.textContent+=' · ตำแหน่งสระ '+count+' จุด';
+      }
+      return {html:'<!doctype html>'+doc.documentElement.outerHTML,count};
+    }finally{await pdf.destroy();}
+  }
+
+  const api={missingStackedTone,lines,locate,read,reanchor,preserveOriginal,canMark,annotatePdf,pdfLowerVowelIssues,annotatePdfLayout};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   else root.HooHooWordLocator=api;
 })(typeof window==='undefined'?globalThis:window);
