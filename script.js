@@ -467,6 +467,17 @@ const response = await fetch(endpoint, {
           const warning = document.createElement('p');warning.textContent='ยังไม่ได้ยืนยันตำแหน่ง: '+error.message;
           finalHtml += warning.outerHTML;
         }
+      } else if (effectiveMode === 'text-proofreader' && isPdfFile(fileA)) {
+        try {
+          const checked = await HooHooWordLocator.annotatePdfLayout(html, fileA, message => { statusText.textContent = message; });
+          finalHtml = checked.html;
+          needsReview = checked.count > 0;
+        } catch (error) {
+          const warning = document.createElement('p');
+          warning.textContent = 'ยังตรวจตำแหน่งสระบน PDF ไม่สำเร็จ: ' + error.message;
+          finalHtml += warning.outerHTML;
+          needsReview = true;
+        }
       } else if (effectiveMode === 'single') {
         finalHtml = HooHooWordLocator.preserveOriginal(html);
       }
