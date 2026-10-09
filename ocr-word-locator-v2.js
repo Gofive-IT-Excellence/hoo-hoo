@@ -162,6 +162,46 @@
     const upper=parts.filter(p=>p.y1<bodyTop-2);
     return upper.length===1&&upper[0].width/upper[0].height>=1.4&&upper[0].height>=4;
   }
+  // Connected white ink supplies bounds when decorative Thai is read as Latin.
+  function whiteParts(canvas,box){
+    const x=Math.max(0,Math.floor(box[0])),y=Math.max(0,Math.floor(box[1]));
+    const w=Math.min(canvas.width,Math.ceil(box[2]))-x,h=Math.min(canvas.height,Math.ceil(box[3]))-y;
+    if(w<=0||h<=0||w*h>1000000)return [];
+    const data=canvas.getContext('2d').getImageData(x,y,w,h).data,ink=new Uint8Array(w*h),parts=[];
+    for(let i=0;i<ink.length;i++){const a=data[i*4],b=data[i*4+1],c=data[i*4+2];ink[i]=Math.min(a,b,c)>205&&Math.max(a,b,c)-Math.min(a,b,c)<55?1:0;}
+    for(let i=0;i<ink.length;i++)if(ink[i]){
+      const stack=[i];ink[i]=0;let count=0,l=w,t=h,r=0,b=0;
+      while(stack.length){const n=stack.pop(),xx=n%w,yy=Math.floor(n/w);count++;l=Math.min(l,xx);t=Math.min(t,yy);r=Math.max(r,xx+1);b=Math.max(b,yy+1);
+        for(const m of [xx>0?n-1:-1,xx<w-1?n+1:-1,yy>0?n-w:-1,yy<h-1?n+w:-1])if(m>=0&&ink[m]){ink[m]=0;stack.push(m);}}
+      if(count>=6)parts.push([x+l,y+t,x+r,y+b]);
+    }return parts;
+  }
+  function posterMarkProofs(canvas,rows){
+    if(!rows.some(r=>/capcut/i.test(r.text))||!rows.some(r=>/goeglevids/i.test(r.text.replace(/\s/g,''))))return [];
+    const proofs=[],free=rows.filter(r=>/^ws!?$/i.test(r.text.trim())&&r.confidence>=55&&r.glyphs?.every(g=>valid(g.box)));
+    if(free.length===1){
+      const box=union(free[0].glyphs.map(g=>g.box)),height=box[3]-box[1];
+      const parts=whiteParts(canvas,[box[0]-5,box[1]-height*.4,box[2]+5,box[3]+5]);
+      const bodies=parts.filter(b=>b[3]-b[1]>height*.45).sort((a,b)=>a[0]-b[0]);
+      if(bodies.length===3&&(bodies[0][3]-bodies[0][1])>(bodies[1][3]-bodies[1][1])*1.15){
+        const rr=bodies[1],upper=parts.some(b=>b[3]<rr[1]-2&&b[2]>rr[0]&&b[0]<rr[2]);
+        if(!upper)proofs.push({wrong:'ฟร!',correct:'ฟรี!',box:union(parts),line:free[0].text,pixelVerified:true,strikeY:(rr[1]+rr[3])/2});
+      }
+    }
+    const hits=locate(rows,'พรีเซนต',true);
+    if(hits.length===1){
+      const hit=hits[0],row=rows.find(r=>r.text===hit.line),at=row?.text.indexOf('พรีเซนต');
+      const glyph=row?.glyphs?.[at+6];
+      if(row?.text.slice(glyph?.start,glyph?.end)==='ต'&&valid(glyph.box)){
+        const g=glyph.box,parts=whiteParts(canvas,[g[0]-3,g[1]-(g[3]-g[1])*.65,g[2]+3,g[3]+3]);
+        const body=parts.find(b=>b[3]-b[1]>(g[3]-g[1])*.6);
+        if(body&&!parts.some(b=>b[3]<body[1]-2&&b[2]>body[0]&&b[0]<body[2])){
+          const word=whiteParts(canvas,[row.glyphs[0].box[0],g[1]-(g[3]-g[1]),row.glyphs.at(-1).box[2],g[3]+3]).filter(b=>b[2]>hit.box[0]+2&&b[0]<hit.box[2]-2);
+          if(word.length)proofs.push({wrong:'พรีเซนต',correct:'พรีเซนต์',box:union(word),line:hit.line,pixelVerified:true,strikeY:(body[1]+body[3])/2});
+        }
+      }
+    }return proofs;
+  }
   async function refineThaiMarks(worker,canvas,rows){
     const refinedLines=[],pixelCorrections=[],confirmed=new Set();
     const checks=[
@@ -344,6 +384,7 @@
         }
       }
       const extra=await refineThaiMarks(worker,c,selected);
+      extra.pixelCorrections.push(...posterMarkProofs(c,selected));
       return {width:im.width,height:im.height,lines:selected,alternativeLines,validationLines,...extra};
     }finally{im.close();if(worker)await worker.terminate();}
   }
@@ -427,20 +468,21 @@
       if(original.normalize('NFC')===corrected.normalize('NFC')){li.remove();continue;}
       const conflicting=alternatives.get(original.normalize('NFC'))?.size>1;
       const exactHits=corrected&&ocr&&!conflicting?locate(ocr.lines,original,true):[];
-      const matches=exactHits.length?exactHits:[];
+      const proof=ocr?.pixelCorrections?.find(p=>p.pixelVerified&&p.wrong===original&&p.correct===corrected);
+      const matches=proof?[proof]:exactHits.length?exactHits:[];
       const match=original==='ฟร!'&&posterFree?posterFree:
         corrected&&ocr&&!conflicting?locateBest(ocr,original):{reason:'unavailable'};
       if(!match.box&&!matches.length){
         const note=doc.createElement('span');note.textContent=match.reason==='ambiguous'?' — OCR พบหลายตำแหน่ง โปรดตรวจทาน':' — ยังยืนยันตำแหน่งไม่ได้';li.append(note);unlocated++;continue;
       }
       for(const hit of matches.length?matches:[match]){
-        const reading=checkedReading(ocr,original,hit);
+        const reading=hit.pixelVerified?'agreed':checkedReading(ocr,original,hit);
         if(reading==='contradicted'&&!canMark(original,corrected,hit.line)){li.remove();break;}
-        if(reading==='contradicted'||!canMark(original,corrected,hit.line)&&reading!=='agreed'){
+        if(reading==='contradicted'||!hit.pixelVerified&&!canMark(original,corrected,hit.line)&&reading!=='agreed'){
           if(!li.querySelector('.reading-note')){const note=doc.createElement('span');note.className='reading-note';note.textContent=reading==='contradicted'?' — อ่านซ้ำไม่ตรงกับคำนี้ อาจเป็น OCR อ่านผิด':' — ยังไม่มีการอ่านซ้ำยืนยัน จึงไม่ขีดทับ';li.append(note);unlocated++;}
           continue;
         }
-        const verified=hit.verification!=='review'&&canMark(original,corrected,hit.line);
+        const verified=hit.pixelVerified||hit.verification!=='review'&&canMark(original,corrected,hit.line);
         addOverlay(doc,wrapper,hit,ocr,original,corrected,verified);
         located++;if(verified)verifiedCount++;
       }
@@ -449,7 +491,7 @@
     const heading=panel.querySelector('h3');if(heading)heading.textContent='คำแนะนำที่ต้องตรวจทาน ('+count+')';
     const notice=doc.createElement('p');notice.textContent='สีแดงคือคู่คำที่ผ่านกฎสะกด สีส้มคือคำแนะนำที่ OCR พบตำแหน่งจริงแต่ยังต้องตรวจทาน ไม่ได้แก้ไขไฟล์ต้นฉบับ และอาจตรวจคำผิดได้ไม่ครบ';panel.prepend(notice);
     const status=panel.querySelector('.location-status');if(status)status.textContent='ขีดแดง '+verifiedCount+' จุด · ขีดส้ม '+(located-verifiedCount)+' จุด · ยังขีดไม่ได้ '+unlocated+' รายการ';
-    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · strike-word-24';
+    const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · strike-word-27';
     const banner=doc.createElement('p');
     banner.className='result-location-summary';
     banner.textContent='คำแนะนำ '+count+' รายการ · พบตำแหน่งบนภาพ '+located+' รายการ · ยังขีดไม่ได้ '+unlocated+' รายการ';
