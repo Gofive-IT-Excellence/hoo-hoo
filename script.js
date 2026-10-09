@@ -11,6 +11,8 @@ const OCR_COMPARE_ENDPOINT =
 "https://n8n.tks.co.th/webhook/thai-ocr-compare";
 
 let pdfJsPromise;
+let workspaceVersion = 0;
+let activeRequestController = null;
 
 const modeSelect = document.getElementById("mode");
 const boxB = document.getElementById("boxB");
@@ -132,6 +134,24 @@ document.querySelectorAll(".upload-box").forEach((box) => {
 });
 
 function updateMode() {
+  workspaceVersion++;
+  activeRequestController?.abort();
+  activeRequestController = null;
+  requestBusy = false;
+  fileAInput.value = "";
+  fileBInput.value = "";
+  for (const image of [previewA, previewB]) {
+    image.removeAttribute("src");
+    image.style.display = "none";
+  }
+  fileBLabel.textContent = "เลือกไฟล์ B";
+  resultBox.replaceChildren();
+  resultBox.classList.remove("is-loading", "has-result");
+  const button = document.querySelector('.submit-button');
+  if (button) {
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+  }
   const mode = modeSelect.value;
 
   if (mode === "single") {
@@ -216,8 +236,10 @@ function preview(event, imageElement, labelElement, label) {
     return;
   }
 
+  const previewVersion = workspaceVersion;
   const reader = new FileReader();
   reader.onload = (readerEvent) => {
+    if (previewVersion !== workspaceVersion || event.target.files[0] !== file) return;
     imageElement.src = readerEvent.target.result;
     imageElement.style.display = "block";
   };
@@ -374,6 +396,11 @@ async function sendToN8N() {
     return;
   }
 
+  const requestVersion = workspaceVersion;
+  const isCurrentRequest = () => requestVersion === workspaceVersion;
+  const setProgress = message => { if (isCurrentRequest()) statusText.textContent = message; };
+  const controller = new AbortController();
+  activeRequestController = controller;
   requestBusy = true;
   const submitButton = document.querySelector('.submit-button');
   if (submitButton) {
@@ -388,8 +415,9 @@ async function sendToN8N() {
     let browserLocator = null;
     if (mode === 'compare') {
       const result = await HooHooCompare.compare(fileA, fileB, message => {
-        statusText.textContent = message;
+        setProgress(message);
       });
+      if (!isCurrentRequest()) return;
       resultBox.classList.remove('is-loading');
       renderResultHtml(HooHooCompare.render(result));
       statusText.textContent = result.uncertain.length ? 'ตรวจเสร็จ — มีรายการต้องตรวจเพิ่มเติม' : 'ตรวจเสร็จแล้ว';
@@ -411,6 +439,7 @@ async function sendToN8N() {
       try { browserLocator = await HooHooWordLocator.read(fileA); }
       catch (error) { console.warn('Browser OCR unavailable', error); }
     }
+    if (!isCurrentRequest()) return;
     const browserOcr = toBrowserOcrPayload(browserLocator);
 
     const form = new FormData();
@@ -429,6 +458,7 @@ async function sendToN8N() {
 const response = await fetch(endpoint, {
       method: "POST",
       body: form,
+      signal: controller.signal,
     });
 
     const responseText = await response.text();
@@ -445,6 +475,7 @@ const response = await fetch(endpoint, {
     }
 
 
+    if (!isCurrentRequest()) return;
     const html = Array.isArray(json) ? json[0]?.html : json?.html;
 
     if (html) {
@@ -460,7 +491,7 @@ const response = await fetch(endpoint, {
         needsReview = checked.reviewCount > 0;
       } else if (effectiveMode === 'single' && /\.pdf$/i.test(fileA.name)) {
         try {
-          const checked = await HooHooWordLocator.annotatePdf(html,fileA,message=>{statusText.textContent=message;});
+          const checked = await HooHooWordLocator.annotatePdf(html,fileA,setProgress);
           finalHtml = checked.html;
         } catch (error) {
           finalHtml = HooHooWordLocator.preserveOriginal(html);
@@ -469,7 +500,7 @@ const response = await fetch(endpoint, {
         }
       } else if (effectiveMode === 'text-proofreader' && isPdfFile(fileA)) {
         try {
-          const checked = await HooHooWordLocator.annotatePdfLayout(html, fileA, message => { statusText.textContent = message; });
+          const checked = await HooHooWordLocator.annotatePdfLayout(html, fileA, setProgress);
           finalHtml = checked.html;
           needsReview = checked.count > 0;
         } catch (error) {
@@ -481,6 +512,7 @@ const response = await fetch(endpoint, {
       } else if (effectiveMode === 'single') {
         finalHtml = HooHooWordLocator.preserveOriginal(html);
       }
+      if (!isCurrentRequest()) return;
       resultBox.classList.remove("is-loading");
       renderResultHtml(finalHtml);
       statusText.textContent = needsReview ? 'ประมวลผลแล้ว — โปรดตรวจทานคำแนะนำกับต้นฉบับ' : 'ประมวลผลเสร็จแล้ว';
@@ -494,10 +526,13 @@ ${JSON.stringify(json, null, 2)}
       statusText.textContent = "ไม่พบผลลัพธ์";
     }
   } catch (error) {
+    if (!isCurrentRequest()) return;
     resultBox.classList.remove("is-loading");
     resultBox.textContent = `ERROR:\n${error}`;
     statusText.textContent = "ประมวลผลไม่สำเร็จ";
   } finally {
+    if (!isCurrentRequest()) return;
+    activeRequestController = null;
     requestBusy = false;
     if (submitButton) {
       submitButton.disabled = false;
