@@ -373,6 +373,22 @@ function toBrowserOcrPayload(ocr) {
   return {version:1, engine:'tesseract-browser-7', width:ocr.width, height:ocr.height, regions};
 }
 
+// Location OCR is optional: the server also receives the original image.
+async function readImageLocations(file, parentSignal) {
+  const signal = AbortSignal.any([parentSignal, AbortSignal.timeout(35_000)]);
+  signal.throwIfAborted();
+  let onAbort;
+  const aborted = new Promise((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, {once:true});
+  });
+  try {
+    return await Promise.race([aborted, HooHooWordLocator.read(file, undefined, signal)]);
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+  }
+}
+
 let requestBusy = false;
 async function sendToN8N() {
   if (requestBusy) return;
@@ -411,8 +427,8 @@ async function sendToN8N() {
   resultBox.classList.remove("has-result");
   statusText.textContent = "กำลังประมวลผล";
 
+  let browserLocator = null;
   try {
-    let browserLocator = null;
     if (mode === 'compare') {
       const result = await HooHooCompare.compare(fileA, fileB, message => {
         setProgress(message);
@@ -436,7 +452,7 @@ async function sendToN8N() {
 
     if (effectiveMode === 'single' && /^image\//.test(fileA.type)) {
       statusText.textContent = 'กำลังอ่านตำแหน่งคำในเบราว์เซอร์';
-      try { browserLocator = await HooHooWordLocator.read(fileA); }
+      try { browserLocator = await readImageLocations(fileA, controller.signal); }
       catch (error) { console.warn('Browser OCR unavailable', error); }
     }
     if (!isCurrentRequest()) return;
@@ -455,12 +471,14 @@ async function sendToN8N() {
          ? TEXT_ENDPOINT
          : OCR_ENDPOINT;
 
-const response = await fetch(endpoint, {
+setProgress(browserOcr ? "กำลังส่งข้อความและไฟล์ต้นฉบับไปตรวจ" : "กำลังส่งไฟล์ต้นฉบับไปตรวจ");
+    const response = await fetch(endpoint, {
       method: "POST",
       body: form,
-      signal: controller.signal,
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(120_000)]),
     });
 
+    if (!response.ok) throw new Error(`บริการตรวจเอกสารตอบกลับ HTTP ${response.status}`);
     const responseText = await response.text();
     let json;
 
@@ -481,14 +499,16 @@ const response = await fetch(endpoint, {
     if (html) {
       let finalHtml = html;
       let needsReview = effectiveMode === 'single';
+      let noVerifiedLines = false;
       if (effectiveMode === 'single' && /^image\//.test(fileA.type)) {
         statusText.textContent = 'กำลังยืนยันตำแหน่งคำจากภาพจริง';
-        let ocr = browserLocator;
-        if (!ocr) try { ocr = await HooHooWordLocator.read(fileA); }
-        catch (error) { console.warn('Native OCR location unavailable', error.message); }
-        const checked = HooHooWordLocator.reanchor(html, ocr);
+        const checked = HooHooWordLocator.reanchor(html, browserLocator);
         finalHtml = checked.html;
-        needsReview = checked.reviewCount > 0;
+        needsReview = !browserOcr || checked.incompleteCoverage || checked.reviewCount > 0;
+        noVerifiedLines = checked.incompleteCoverage && checked.checkedLines === 0;
+        if (!browserOcr) {
+          finalHtml += '<p>อ่านตำแหน่งข้อความจากภาพได้ไม่ครบ โปรดตรวจทานคำแนะนำกับต้นฉบับ</p>';
+        }
       } else if (effectiveMode === 'single' && /\.pdf$/i.test(fileA.name)) {
         try {
           const checked = await HooHooWordLocator.annotatePdf(html,fileA,setProgress);
@@ -515,7 +535,9 @@ const response = await fetch(endpoint, {
       if (!isCurrentRequest()) return;
       resultBox.classList.remove("is-loading");
       renderResultHtml(finalHtml);
-      statusText.textContent = needsReview ? 'ประมวลผลแล้ว — โปรดตรวจทานคำแนะนำกับต้นฉบับ' : 'ประมวลผลเสร็จแล้ว';
+      statusText.textContent = noVerifiedLines
+        ? 'ยังยืนยันผลตรวจจากภาพไม่ได้'
+        : needsReview ? 'ประมวลผลแล้ว — โปรดตรวจทานกับต้นฉบับ' : 'ประมวลผลเสร็จแล้ว';
     } else {
       resultBox.classList.remove("is-loading");
       resultBox.innerHTML = `
@@ -528,7 +550,27 @@ ${JSON.stringify(json, null, 2)}
   } catch (error) {
     if (!isCurrentRequest()) return;
     resultBox.classList.remove("is-loading");
-    resultBox.textContent = `ERROR:\n${error}`;
+    if (browserLocator?.lines.length) {
+      try {
+        const imageUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(fileA);
+        });
+        if (!isCurrentRequest()) return;
+        const localResult = HooHooWordLocator.renderLocal(imageUrl, browserLocator);
+        renderResultHtml(localResult.html);
+        statusText.textContent = "ผลตรวจเบื้องต้น — บริการตรวจฉบับเต็มไม่พร้อม";
+        return;
+      } catch (fallbackError) {
+        console.warn("Local spelling result unavailable", fallbackError);
+      }
+    }
+    if (!isCurrentRequest()) return;
+    resultBox.textContent = error.name === "TimeoutError"
+      ? "บริการตรวจเอกสารใช้เวลานานเกินกำหนด กรุณาลองส่งใหม่หรือแบ่งเอกสารเป็นไฟล์ย่อย"
+      : `ตรวจเอกสารไม่สำเร็จ: ${error.message}`;
     statusText.textContent = "ประมวลผลไม่สำเร็จ";
   } finally {
     if (!isCurrentRequest()) return;

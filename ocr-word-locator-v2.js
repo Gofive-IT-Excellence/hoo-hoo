@@ -4,7 +4,7 @@
   const valid=b=>Array.isArray(b)&&b.length===4&&b.every(Number.isFinite)&&b[2]>b[0]&&b[3]>b[1];
   const union=bs=>[Math.min(...bs.map(b=>b[0])),Math.min(...bs.map(b=>b[1])),Math.max(...bs.map(b=>b[2])),Math.max(...bs.map(b=>b[3]))];
   // Narrow spelling rules; never treat an arbitrary AI replacement as verified.
-  const clearPairs=new Map(Object.entries({'อนุญาติ':'อนุญาต','ประมวณผล':'ประมวลผล','บริสัท':'บริษัท','ข้อมุล':'ข้อมูล','ข้อตวาม':'ข้อความ','บันทก':'บันทึก','ลกษณะ':'ลักษณะ','กำนด':'กำหนด','กํานด':'กำหนด','หน่ยว':'หน่วย','รายล่ะเอียด':'รายละเอียด','ทังหมด':'ทั้งหมด','ปรากฎ':'ปรากฏ','สังเกตุ':'สังเกต','คำนวน':'คำนวณ','บอกล':'บอกลา','วิดีโด':'วิดีโอ','พรีเซนต':'พรีเซนต์','Goegle':'Google','วิดิทัศน์':'วีดิทัศน์','วิดีทัศน์':'วีดิทัศน์','วีดีทัศน์':'วีดิทัศน์','ประศบภัย':'ประสบภัย','ชวย':'ช่วย','ผู':'ผู้','ทวม':'ท่วม','ภากไต้':'ภาคใต้','ฝรัง':'ฝรั่ง','ได':'ได้','อยา':'อย่า','ประโยบ':'ประโยค','ทก':'ทุก','จรง':'จริง','จินตนากาน':'จินตนาการ','Banano':'Banana','เงน':'เงิน','คณ':'คุณ','สามารด':'สามารถ','สถานการณ':'สถานการณ์','ชอย':'ชอบ','อินโฟกราฟฟิก':'อินโฟกราฟิก','บ้าล':'บ้าน','ประหยด':'ประหยัด','ประหยับ':'ประหยัด','ประหยัม':'ประหยัด','ง่าน':'ง่าย'}));
+  const clearPairs=new Map(Object.entries({'อนุญาติ':'อนุญาต','ประมวณผล':'ประมวลผล','บริสัท':'บริษัท','ข้อมุล':'ข้อมูล','ข้อตวาม':'ข้อความ','บันทก':'บันทึก','ลกษณะ':'ลักษณะ','กำนด':'กำหนด','กํานด':'กำหนด','หน่ยว':'หน่วย','รายล่ะเอียด':'รายละเอียด','ทังหมด':'ทั้งหมด','ปรากฎ':'ปรากฏ','สังเกตุ':'สังเกต','คำนวน':'คำนวณ','บอกล':'บอกลา','วิดีโด':'วิดีโอ','พรีเซนต':'พรีเซนต์','Goegle':'Google','วิดิทัศน์':'วีดิทัศน์','วิดีทัศน์':'วีดิทัศน์','วีดีทัศน์':'วีดิทัศน์','ประศบภัย':'ประสบภัย','ชวย':'ช่วย','ผู':'ผู้','ทวม':'ท่วม','ภากไต้':'ภาคใต้','ฝรัง':'ฝรั่ง','ได':'ได้','อยา':'อย่า','ประโยบ':'ประโยค','ทก':'ทุก','จรง':'จริง','จินตนากาน':'จินตนาการ','Banano':'Banana','เงน':'เงิน','คณ':'คุณ','สามารด':'สามารถ','สถานการณ':'สถานการณ์','รถยนต':'รถยนต์','ประกน':'ประกัน','ชอย':'ชอบ','อินโฟกราฟฟิก':'อินโฟกราฟิก','บ้าล':'บ้าน','ประหยด':'ประหยัด','ประหยับ':'ประหยัด','ประหยัม':'ประหยัด','ง่าน':'ง่าย'}));
   function canMark(original,corrected,line){
     if(clearPairs.get(original)===corrected)return true;
     if(original==='ผู'&&corrected==='ผู้')return /ผู(?:ป่วย|ถือหุ้น|ใช้งาน|ให้บริการ)/.test(line);
@@ -25,16 +25,23 @@
       if(rb[3]<=y)aboveGap=Math.min(aboveGap,y-rb[3]);
       if(rb[1]>=b)belowGap=Math.min(belowGap,rb[1]-b);
     }
-    const below=y<30;
+    const glyphHeight=b-y;
+    const labelHeight=glyphHeight*1.2;
+    const gap=Math.max(2,glyphHeight*.2);
+    const roomAbove=Math.min(y,aboveGap);
+    const roomBelow=Math.min(ocr.height-b,belowGap);
+    const below=roomAbove<labelHeight+gap&&roomBelow>roomAbove;
+    wrapper.style.containerType='inline-size';
+    const labelSize=(glyphHeight/ocr.width*100).toFixed(3);
     mark.className=verified?'verified-spelling-mark':'review-spelling-mark';mark.title=(verified?'คำผิดที่ยืนยัน: ':'คำแนะนำให้ตรวจทาน: ')+original+' → '+corrected;
     mark.setAttribute('aria-label',mark.title);
-    mark.style.cssText='position:absolute;height:0;background:none;border-top:3px '+(verified?'solid ':'dashed ')+color+';z-index:3;pointer-events:auto;';
+    mark.style.cssText='position:absolute;height:0;background:none;border-top:clamp(1px,'+(Number(labelSize)*.12)+'cqw,3px) '+(verified?'solid ':'dashed ')+color+';z-index:3;pointer-events:auto;';
     mark.style.left=x/ocr.width*100+'%';mark.style.top=middle/ocr.height*100+'%';
     mark.style.width=(r-x)/ocr.width*100+'%';
     label.className=verified?'verified-spelling-correction':'review-spelling-correction';
     label.textContent='→ '+corrected;label.title=mark.title;label.setAttribute('aria-label',mark.title);
-    label.style.cssText='position:absolute;z-index:4;color:'+color+';font:700 clamp(14px,2vw,24px)/1.2 Arial,Tahoma,sans-serif;white-space:nowrap;background:transparent;border:0;padding:0;box-shadow:none;-webkit-text-stroke:2px #fff;paint-order:stroke fill;text-shadow:0 1px 1px #fff;transform:translate(-50%,'+(below?'0':'-100%')+');pointer-events:auto;';
-    label.style.left=(x+r)/2/ocr.width*100+'%';label.style.top=(below?Math.min(ocr.height,b+5):Math.max(0,y-5))/ocr.height*100+'%';
+    label.style.cssText='position:absolute;z-index:4;color:'+color+';font:700 clamp(9px,'+labelSize+'cqw,18px)/1.2 Arial,Tahoma,sans-serif;white-space:nowrap;background:transparent;border:0;padding:0;box-shadow:none;-webkit-text-stroke:1px #fff;paint-order:stroke fill;text-shadow:0 1px 1px #fff;transform:translate(-50%,'+(below?'0':'-100%')+');pointer-events:auto;';
+    label.style.left=(x+r)/2/ocr.width*100+'%';label.style.top=(below?Math.min(ocr.height,b+gap):Math.max(0,y-gap))/ocr.height*100+'%';
     wrapper.append(mark,label);
   }
   function strikeY(glyphs){
@@ -82,6 +89,10 @@
       while((at=row.text.indexOf(word,from))!==-1){
         if(word==='คณ'&&!/^คณ(?:สามารถ|สามารด)/.test(row.text.slice(at))||word==='ชอย'&&!/ไม่$/.test(row.text.slice(0,at))||word==='ทก'&&!/^ทกเรื/.test(row.text.slice(at))||word==='ได'&&!/^ได(?:ยิน|ตาม)/.test(row.text.slice(at))||word==='อยา'&&!/^อยาเช(?:ื่อ|อ)/.test(row.text.slice(at))||word==='ผู'&&!/^ผู(?:ประ[สศ]บภัย|ป่วย|ใช้งาน|ถือหุ้น)/.test(row.text.slice(at))||word==='ชวย'&&!/^ชวยเหลือ/.test(row.text.slice(at))){from=at+word.length;continue;}
         const end=at+word.length,gs=row.glyphs.filter(g=>g.end>at&&g.start<end);
+        // A complete รถยนต์, or a longer compound, must not match this suffix rule.
+        if(word==='รถยนต'&&!/^(?:$|[\s.,:;!?()])/u.test(row.text.slice(end))){
+          from=end;continue;
+        }
         // Partial glyphs and combining marks belonging to the next character
         // cannot be treated as reliable word boundaries.
         // Thai segmentation can join a short misspelling to the following
@@ -261,13 +272,23 @@
     }
     return {refinedLines,pixelCorrections,confirmed:[...confirmed]};
   }
-  async function read(file,progress=()=>{}){
-    const im=await createImageBitmap(file);let worker;
+  async function read(file,progress=()=>{},signal){
+    signal?.throwIfAborted();
+    const im=await createImageBitmap(file);let worker,termination;
+    const stopWorker=()=>worker && (termination ??= worker.terminate());
+    const onAbort=()=>{ void stopWorker()?.catch(()=>{}); };
     try{
+      signal?.throwIfAborted();
       if(im.width*im.height>20000000)throw Error('ภาพเกิน 20 ล้านพิกเซล');
       const c=document.createElement('canvas');c.width=im.width;c.height=im.height;c.getContext('2d').drawImage(im,0,0);
       const base=new URL('vendor/tesseract/',document.baseURI).href;
-      worker=await Tesseract.createWorker('tha+eng',1,{workerPath:base+'worker.min.js',corePath:base+'core',langPath:base+'lang',gzip:false,logger:m=>progress(m.status)});
+      worker=await Tesseract.createWorker('tha+eng',1,{workerPath:base+'worker.min.js',corePath:base+'core',langPath:base+'lang',gzip:false,logger:m=>progress(m.status)},{
+        // Capture the printed spelling before the proofreader suggests a fix.
+        load_system_dawg:'0',load_freq_dawg:'0',load_punc_dawg:'0',
+        load_number_dawg:'0',load_unambig_dawg:'0',load_bigram_dawg:'0'
+      });
+      signal?.addEventListener('abort',onAbort,{once:true});
+      signal?.throwIfAborted();
       await worker.setParameters({tessedit_pageseg_mode:'3'});
       const {data}=await worker.recognize(c,{}, {text:true,blocks:true});
       let selected=lines(data);const alternativeLines=[],validationLines=[];
@@ -275,6 +296,30 @@
         const boxes=row.glyphs.map(g=>g.box);
         return boxes.length?Math.max(...boxes.map(b=>b[3]))-Math.min(...boxes.map(b=>b[1])):0;
       }).sort((a,b)=>a-b);
+      // Keep a second reading of small print without replacing the full-page
+      // transcription. Map glyph boxes back to the original image.
+      if (c.width <= 900 && heights.length && heights[Math.floor(heights.length / 2)] <= 18) {
+        const enlarged = document.createElement('canvas');
+        enlarged.width = c.width * 3;
+        enlarged.height = c.height * 3;
+        try {
+          const context = enlarged.getContext('2d');
+          context.imageSmoothingQuality = 'high';
+          context.drawImage(c, 0, 0, enlarged.width, enlarged.height);
+          const reread = await worker.recognize(enlarged, {}, {text:true, blocks:true});
+          const mapped = lines(reread.data).map(row => ({
+            ...row,
+            glyphs: row.glyphs.map(glyph => ({...glyph, box: glyph.box.map(value => value / 3)}))
+          }));
+          alternativeLines.push(...mapped);
+          validationLines.push(...mapped);
+        } catch (error) {
+          signal?.throwIfAborted();
+          console.warn('Small-print OCR unavailable', error);
+        } finally {
+          enlarged.width = enlarged.height = 0;
+        }
+      }
       // Large lettering in a sparse poster is often segmented as a document
       // by PSM 3. Try a uniform text block and keep it only if its OCR is
       // measurably stronger, so ordinary documents retain their first pass.
@@ -386,13 +431,16 @@
       const extra=await refineThaiMarks(worker,c,selected);
       extra.pixelCorrections.push(...posterMarkProofs(c,selected));
       return {width:im.width,height:im.height,lines:selected,alternativeLines,validationLines,...extra};
-    }finally{im.close();if(worker)await worker.terminate();}
+    }finally{signal?.removeEventListener('abort',onAbort);im.close();await stopWorker();}
   }
   // Rebuild the result from data, not the backend's executable geometry script.
   // Keep unmatched suggestions visible, but never put an invented line on ink.
   function reanchor(html,ocr){
     const doc=new DOMParser().parseFromString(html,'text/html');
     const panel=doc.querySelector('.correction-panel'),wrapper=doc.querySelector('.wrapper');
+    const coverage = doc.body.textContent.match(/AI\s*ตรวจได้ชัด\s*(\d+)\s*จาก\s*(\d+)\s*บรรทัด/);
+    const checkedLines = coverage ? Number(coverage[1]) : null;
+    const incompleteCoverage = coverage !== null && checkedLines < Number(coverage[2]);
     if(!panel||!wrapper||!wrapper.querySelector('img'))throw Error('รูปแบบผลตรวจไม่รองรับการตรวจพิกัด');
     doc.querySelectorAll('script,.ocr-fix-line,.ocr-fix-text,.verified-spelling-mark,.review-spelling-mark,.verified-spelling-correction,.review-spelling-correction').forEach(n=>n.remove());
     let posterFree=null,poster=false;
@@ -488,6 +536,13 @@
       }
     }
     const count=panel.querySelectorAll('li').length;
+    if (incompleteCoverage && count === 0) {
+      const warning = doc.createElement('p');
+      warning.textContent = checkedLines === 0
+        ? 'ยังยืนยันผลตรวจไม่ได้ ลองใช้ภาพต้นฉบับที่คมชัดกว่า หรือแบ่งภาพเป็นส่วน ๆ แล้วส่งตรวจอีกครั้ง'
+        : 'ยังตรวจไม่ครบทุกบรรทัด โปรดตรวจทานส่วนที่เหลือกับต้นฉบับ';
+      panel.prepend(warning);
+    }
     const heading=panel.querySelector('h3');if(heading)heading.textContent='คำแนะนำที่ต้องตรวจทาน ('+count+')';
     const notice=doc.createElement('p');notice.textContent='สีแดงคือคู่คำที่ผ่านกฎสะกด สีส้มคือคำแนะนำที่ OCR พบตำแหน่งจริงแต่ยังต้องตรวจทาน ไม่ได้แก้ไขไฟล์ต้นฉบับ และอาจตรวจคำผิดได้ไม่ครบ';panel.prepend(notice);
     const status=panel.querySelector('.location-status');if(status)status.textContent='ขีดแดง '+verifiedCount+' จุด · ขีดส้ม '+(located-verifiedCount)+' จุด · ยังขีดไม่ได้ '+unlocated+' รายการ';
@@ -498,7 +553,26 @@
     banner.style.cssText='box-sizing:border-box;width:100%;margin:0 0 10px;padding:10px 14px;border:1px solid #9bdedb;border-radius:10px;background:#f4fffe;color:#174b49;font:14px/1.5 Arial,Tahoma,sans-serif;text-align:left';
     wrapper.before(banner);
     collapseReview(doc,panel);
-    return {html:'<!doctype html>'+doc.documentElement.outerHTML,located,unlocated,reviewCount:count};
+    return {html:'<!doctype html>'+doc.documentElement.outerHTML,located,unlocated,reviewCount:count,incompleteCoverage,checkedLines};
+  }
+  function renderLocal(imageUrl, ocr) {
+    const doc = document.implementation.createHTMLDocument('ผลตรวจเบื้องต้น');
+    const notice = doc.createElement('p');
+    notice.textContent = 'บริการตรวจฉบับเต็มไม่พร้อม ผลนี้มาจาก OCR และกฎสะกดในเบราว์เซอร์ โปรดตรวจทานต้นฉบับ';
+    const wrapper = doc.createElement('div');
+    wrapper.className = 'wrapper';
+    wrapper.style.cssText = 'position:relative;width:fit-content;max-width:100%;margin:auto';
+    const image = doc.createElement('img');
+    image.src = imageUrl;
+    image.alt = 'ภาพต้นฉบับ';
+    image.style.cssText = 'display:block;max-width:100%;height:auto';
+    wrapper.append(image);
+    const panel = doc.createElement('section');
+    panel.className = 'correction-panel';
+    const heading = doc.createElement('h3');
+    panel.append(heading);
+    doc.body.append(notice, wrapper, panel);
+    return reanchor(doc.documentElement.outerHTML, ocr);
   }
   function collapseReview(doc,panel){
     const details=doc.createElement('details'),summary=doc.createElement('summary');
@@ -647,7 +721,7 @@ function pdfLowerVowelIssues(operatorList, OPS) {
     }finally{await pdf.destroy();}
   }
 
-  const api={missingStackedTone,lines,locate,read,reanchor,preserveOriginal,canMark,annotatePdf,pdfLowerVowelIssues,annotatePdfLayout};
+  const api={missingStackedTone,lines,locate,read,reanchor,renderLocal,preserveOriginal,canMark,annotatePdf,pdfLowerVowelIssues,annotatePdfLayout};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   else root.HooHooWordLocator=api;
 })(typeof window==='undefined'?globalThis:window);
