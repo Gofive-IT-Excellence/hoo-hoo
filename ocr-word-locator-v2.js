@@ -5,8 +5,94 @@
   const union=bs=>[Math.min(...bs.map(b=>b[0])),Math.min(...bs.map(b=>b[1])),Math.max(...bs.map(b=>b[2])),Math.max(...bs.map(b=>b[3]))];
   // Narrow spelling rules; never treat an arbitrary AI replacement as verified.
   const clearPairs=new Map(Object.entries({'อนุญาติ':'อนุญาต','ประมวณผล':'ประมวลผล','บริสัท':'บริษัท','ข้อมุล':'ข้อมูล','ข้อตวาม':'ข้อความ','บันทก':'บันทึก','ลกษณะ':'ลักษณะ','กำนด':'กำหนด','กํานด':'กำหนด','หน่ยว':'หน่วย','รายล่ะเอียด':'รายละเอียด','ทังหมด':'ทั้งหมด','ปรากฎ':'ปรากฏ','สังเกตุ':'สังเกต','คำนวน':'คำนวณ','บอกล':'บอกลา','วิดีโด':'วิดีโอ','พรีเซนต':'พรีเซนต์','Goegle':'Google','วิดิทัศน์':'วีดิทัศน์','วิดีทัศน์':'วีดิทัศน์','วีดีทัศน์':'วีดิทัศน์','ประศบภัย':'ประสบภัย','ชวย':'ช่วย','ผู':'ผู้','ทวม':'ท่วม','ภากไต้':'ภาคใต้','ฝรัง':'ฝรั่ง','ได':'ได้','อยา':'อย่า','ประโยบ':'ประโยค','ทก':'ทุก','จรง':'จริง','จินตนากาน':'จินตนาการ','Banano':'Banana','เงน':'เงิน','คณ':'คุณ','สามารด':'สามารถ','สถานการณ':'สถานการณ์','รถยนต':'รถยนต์','ประกน':'ประกัน','ชอย':'ชอบ','อินโฟกราฟฟิก':'อินโฟกราฟิก','บ้าล':'บ้าน','ประหยด':'ประหยัด','ประหยับ':'ประหยัด','ประหยัม':'ประหยัด','ง่าน':'ง่าย'}));
+  // Require nearby text where the OCR token can also occur in valid usage.
+  const contextPairs = new Map([
+    // OCR can drop the existing tone mark in the longer phrase ส่วนบุคคลอื่น.
+    ['ได่', {correct: 'ได้', before: /ไม่$/, after: /^$/}],
+    ['ทา', {correct: 'ทำ', before: /(?:ไหน|โหน|งาน)$/, after: /^ซ[้ํ]+[ำา]/}],
+    ['แตละ', {correct: 'แต่ละ', before: /(?:^|ของ|ใน|ให้)$/, after: /^(?:ทีม|คน|วัน|กลุ่ม|รายการ|ครั้ง)/}],
+    ['เทานั้น', {correct: 'เท่านั้น', before: /(?:^|[A-Za-z]|นี้|เดียว|ได้)$/, after: /^$/}],
+    ['เลล', {correct: 'เลย', before: /(?:ช่วย|ได้|ทันที)$/, after: /^$/}],
+    ['ลองรับ', {correct: 'รองรับ', before: /(?:ที่|ระบบ|สามารถ|เพื่อ|ออกแบบมาให้)$/, after: /^(?:การใช้งาน|การทำงาน|ลูกค้า|ผู้ใช้|อุปกรณ์|ไฟล์|ระบบ|ภาษา|ทุก|ได้|$)/}],
+    ['เนื้อง', {correct: 'เนื่อง', before: /(?:^|ลดลง)$/, after: /^จาก/}],
+    ['เป้น', {correct: 'เป็น', before: /(?:^|ออก|ใช้|จะ|ก็|ไม่|ที่|ให้|ถือว่า)$/, after: /^(?:กระดาษ|หลักฐาน|ส่วน|ไป|ได้|อยู่|$)/}],
+    ['เซ่น', {correct: 'เช่น', before: /ใช้กระดาษ$/, after: /^e[-–]?Payment/i}],
+    ['ปริมาน', {correct: 'ปริมาณ', before: /(?:^|มี)$/, after: /^การใช้/}],
+    ['เช็ก', {correct: 'เช็ค', before: /ช[ำํ]า?ระเงินโดยการใช้$/, after: /^จะถูก/}],
+    ['พร้อมเพย', {correct: 'พร้อมเพย์', before: /(?:^|e-?Payment)$/i, after: /^นอก/}],
+    ['รัฐบาน', {correct: 'รัฐบาล', before: /เกี่ยวข้องกับ$/, after: /^ด้วย/}],
+    ['แต', {correct: 'แต่', before: /(?:^|พิมพ์)$/, after: /^จะต้อง/}],
+    ['น้าไป', {correct: 'นำไป', before: /และ$/, after: /^พิมพ์ข้อมูล/}],
+    ['น้ำไป', {correct: 'นำไป', before: /และ$/, after: /^พิมพ์ข้อมูล/}],
+    ['ภาต', {correct: 'ภาค', before: /ธุรกิจ$/, after: /^เอกชน/}],
+    ['ยุกสมัย', {correct: 'ยุคสมัย', before: /(?:^|ทันต่อ)$/, after: /^(?:ที่|$)/}],
+    ['ต่อยอดด', {correct: 'ต่อยอด', before: /^$/, after: /^การให้บริการ/}],
+    ['การรจัดการ', {correct: 'การจัดการ', before: /(?:^|และ)$/, after: /^ข้อมูล/}],
+    ['คอบ', {correct: 'ครอบ', before: /(?:ให้บริการ|บริการ)ที่$/, after: /^(?:คลุม|$)/}],
+    ['ต้องกา', {correct: 'ต้องการ', before: /ลูกค้า$/, after: /^(?:จึง|$)/}],
+    ['ฟอม', {correct: 'ฟอร์ม', before: /แบบ$/, after: /^ของลูกค้า/}],
+    ['ประมวนผล', {correct: 'ประมวลผล', before: /(?:^|ข้อมูลมา)$/, after: /^(?:พร้อม|$)/}],
+    ['รายได', {correct: 'รายได้', before: /เพิ่ม$/, after: /^$/}],
+    ['นิรภย', {correct: 'นิรภัย', before: /(?:หมวก|กาก)$/, after: /^(?:ท[ีื่]+อุดหู)?$/}],
+    ['หน่า', {correct: 'หน้า', before: /^$/, after: /^กากนิรภ/}],
+    ['ก่อด', {correct: 'ก่อน', before: /ปลอดภัยไว้$/, after: /^$/}],
+    ['อุปกรณ', {correct: 'อุปกรณ์', before: /^$/, after: /^ความปลอดภ/}],
+    ['ปลอดภย', {correct: 'ปลอดภัย', before: /ความ$/, after: /^ส่วนบุค/}],
+    ['บุคคน', {correct: 'บุคคล', before: /ส่วน$/, after: /^(?:\(PPE\)|$)/i}],
+    ['แวนตา', {correct: 'แว่นตา', before: /^$/, after: /^นิ?รภัย/}],
+    ['สะทอนแสง', {correct: 'สะท้อนแสง', before: /เสื้อ$/, after: /^$/}],
+    ['สวนบุคคล', {correct: 'ส่วนบุคคล', before: /ข[้]?อมูล$/, after: /^(?:ที่|ที|ตาม|ของ|[)"”]|$)/}],
+    ['สงเสริม', {correct: 'ส่งเสริม', before: /(?:^|กิจกรรม|การ)$/, after: /^(?:การขาย|$)/}],
+    ['รบุ', {correct: 'ระบุ', before: /(?:^|(?:ที่|ที)|รายละเอ[ีิ]?ยดท)$/, after: /^(?:ข[้]?างต[้]?น|ไว้)/}],
+    ['เก็บลวบรวม', {correct: 'เก็บรวบรวม', before: /(?:^|ที่|ที|การ)$/, after: /^(?:["”)]|$)/}],
+    ['กา', {correct: 'การ', before: /(?:^|ใน)$/, after: /^ค[้ํ]*[ำาํ][้ํ]*ประกัน/}],
+    ['สนเชื่อ', {correct: 'สินเชื่อ', before: /ประกัน$/, after: /^เช่าซ[ื้]+อ/}],
+    ['สนเซีือ', {correct: 'สินเชื่อ', before: /ประกัน$/, after: /^เช่าซ[ื้]+อ/}],
+    ['สนเชซื่อ', {correct: 'สินเชื่อ', before: /ประกัน$/, after: /^เช่าซ[ื้]+อ/}],
+    ['ควม', {correct: 'ความ', before: /คุ้มครอง$/, after: /^เป็นส่วนตัว/}],
+    ['บทบาบ', {correct: 'บทบาท', before: /^$/, after: /^หน[้า]+ที่ความรับ/}],
+    ['หนาที่', {correct: 'หน้าที่', before: /บท[บพ]า[บท]$/, after: /^ความรับ/}],
+    ['รับผดชอบ', {correct: 'รับผิดชอบ', before: /ความ$/, after: /^$/}],
+    ['สนบสนุน', {correct: 'สนับสนุน', before: /^$/, after: /^(?:กิจกรรม|หน่วยงาน|ให้)/}],
+    ['ยังยืน', {correct: 'ยั่งยืน', before: /(?:พัฒนา|อย่าง)$/, after: /^(?:และ|$)/}],
+    ['กาตลาด', {correct: 'การตลาด', before: /^$/, after: /^และการ/}],
+    ['แหงขัน', {correct: 'แข่งขัน', before: /^(?:กา|การ)ตลาดและการ$/, after: /^\s*$/}],
+    ['แขงขัน', {correct: 'แข่งขัน', before: /^(?:กา|การ)ตลาดและการ$/, after: /^\s*$/}],
+    ['เทกโนโลยี', {correct: 'เทคโนโลยี', before: /(?:^|เนื่องจาก|ใช้)$/, after: /^(?:สมัยใหม่|ขั้นสูง|ชั้นสูง|การพิมพ์|$)/}],
+    ['เปรีย', {correct: 'เปรียบ', before: /ได้$/, after: /^(?:เนื่องจาก|เพราะ|กว่า|$)/}],
+    ['หลาหมื่น', {correct: 'หลายหมื่น', before: /(?:^|รวม)$/, after: /^แห่ง/}],
+    ['ประเภม', {correct: 'ประเภท', before: /(?:^|พิมพ์|เอกสาร|ใน)$/, after: /^(?:พิมพ์|ต่าง\s*ๆ|$)/}],
+    ['โรงพิม', {correct: 'โรงพิมพ์', before: /(?:^|มี|เป็น|นั้น|ของ|ที่|ประเภท)$/, after: /^(?:ขนาด?|ที่|ใน|เอกชน|$)/}],
+    ['คุณภาบ', {correct: 'คุณภาพ', before: /(?:^|ประกัน|ตาม|ควบคุม)$/, after: /^(?:งาน|ได้|ของ|$)/}],
+    ['บริคาร', {correct: 'บริการ', before: /การให้$/, after: /^ลักษณะนี้/}],
+    ['รดับ', {correct: 'ระดับ', before: /2\s*$/, after: /^\s*คือ/}],
+    ['ขนาใหญ่', {correct: 'ขนาดใหญ่', before: /โรงพิมพ์$/, after: /^ที่เป็นทั้ง/}],
+    ['นอดจากนี้', {correct: 'นอกจากนี้', before: /พร้อมเพย์\s*$/, after: /^\s*รัฐบาล/}],
+    ['เอกชล', {correct: 'เอกชน', before: /ภาค$/, after: /^ใช้ระบบ/}],
+    ['กาน', {correct: 'การ', before: /(?:^|e-?Policy\s*|ความปลอดภัยใน)$/i, after: /^(?:ออกกรมธรรม์|ท[ำํ]า?งาน)/}],
+    ['นายได้', {correct: 'รายได้', before: /เพิ่ม$/, after: /^\s*$/}],
+    ['นายแรก', {correct: 'รายแรก', before: /ผู้ให้บริการ$/, after: /^ของประเทศ/}],
+    ['ดาร', {correct: 'การ', before: /เนื่องจาก$/, after: /^ให้บริการ/}],
+    ['ประคอบการ', {correct: 'ประกอบการ', before: /ผู้$/, after: /^น้อยราย/}]
+  ]);
+  function matchesSpellingContext(word, text, start) {
+    const pair = contextPairs.get(word);
+    return !pair || pair.before.test(text.slice(0, start)) &&
+      pair.after.test(text.slice(start + word.length));
+  }
+  function locateContextOccurrences(word, text) {
+    let start = text.indexOf(word);
+    while (start !== -1) {
+      if (matchesSpellingContext(word, text, start)) return true;
+      start = text.indexOf(word, start + word.length);
+    }
+    return false;
+  }
   function canMark(original,corrected,line){
     if(clearPairs.get(original)===corrected)return true;
+    if(contextPairs.get(original)?.correct===corrected){
+      return locateContextOccurrences(original, line);
+    }
     if(original==='ผู'&&corrected==='ผู้')return /ผู(?:ป่วย|ถือหุ้น|ใช้งาน|ให้บริการ)/.test(line);
     if(original==='ตอง'&&corrected==='ต้อง')return /(?:ความตองการ|ตองการ|ตองได้รับ)/.test(line);
     if(original==='นบ'&&corrected==='นับ')return /นบ(?:จำนวน|ความถี่|ครั้ง)/.test(line);
@@ -26,22 +112,27 @@
       if(rb[1]>=b)belowGap=Math.min(belowGap,rb[1]-b);
     }
     const glyphHeight=b-y;
-    const labelHeight=glyphHeight*1.2;
-    const gap=Math.max(2,glyphHeight*.2);
+    const labelFont=Math.min(16,Math.max(9,glyphHeight*.65));
+    const labelHeight=labelFont*1.15;
+    const gap=2;
     const roomAbove=Math.min(y,aboveGap);
     const roomBelow=Math.min(ocr.height-b,belowGap);
-    const below=roomAbove<labelHeight+gap&&roomBelow>roomAbove;
+    const nearImageTop=y<ocr.height*.1;
+    const below=!nearImageTop&&roomAbove<labelHeight+gap&&roomBelow>roomAbove;
     wrapper.style.containerType='inline-size';
-    const labelSize=(glyphHeight/ocr.width*100).toFixed(3);
+    const labelSize=(labelFont/ocr.width*100).toFixed(3);
+    const strikeSize=glyphHeight/ocr.width*12;
     mark.className=verified?'verified-spelling-mark':'review-spelling-mark';mark.title=(verified?'คำผิดที่ยืนยัน: ':'คำแนะนำให้ตรวจทาน: ')+original+' → '+corrected;
     mark.setAttribute('aria-label',mark.title);
-    mark.style.cssText='position:absolute;height:0;background:none;border-top:clamp(1px,'+(Number(labelSize)*.12)+'cqw,3px) '+(verified?'solid ':'dashed ')+color+';z-index:3;pointer-events:auto;';
+    mark.style.cssText='position:absolute;height:0;background:none;border-top:clamp(1px,'+strikeSize+'cqw,3px) '+(verified?'solid ':'dashed ')+color+';z-index:3;pointer-events:auto;';
     mark.style.left=x/ocr.width*100+'%';mark.style.top=middle/ocr.height*100+'%';
     mark.style.width=(r-x)/ocr.width*100+'%';
     label.className=verified?'verified-spelling-correction':'review-spelling-correction';
     label.textContent='→ '+corrected;label.title=mark.title;label.setAttribute('aria-label',mark.title);
-    label.style.cssText='position:absolute;z-index:4;color:'+color+';font:700 clamp(9px,'+labelSize+'cqw,18px)/1.2 Arial,Tahoma,sans-serif;white-space:nowrap;background:transparent;border:0;padding:0;box-shadow:none;-webkit-text-stroke:1px #fff;paint-order:stroke fill;text-shadow:0 1px 1px #fff;transform:translate(-50%,'+(below?'0':'-100%')+');pointer-events:auto;';
-    label.style.left=(x+r)/2/ocr.width*100+'%';label.style.top=(below?Math.min(ocr.height,b+gap):Math.max(0,y-gap))/ocr.height*100+'%';
+    label.style.cssText='position:absolute;z-index:4;color:'+color+';font:700 clamp(9px,'+labelSize+'cqw,16px)/1.15 Arial,Tahoma,sans-serif;white-space:nowrap;background:transparent;border:0;padding:0;box-shadow:none;-webkit-text-stroke:1px #fff;paint-order:stroke fill;text-shadow:0 1px 1px #fff;transform:translate(-50%,'+(below?'0':'-100%')+');pointer-events:auto;';
+    label.style.left=(x+r)/2/ocr.width*100+'%';label.style.top=below
+      ? (b+gap)/ocr.height*100+'%'
+      : 'max('+Math.max(0,y-gap)/ocr.height*100+'%, clamp(10.35px,'+(Number(labelSize)*1.15)+'cqw,18.4px))';
     wrapper.append(mark,label);
   }
   function strikeY(glyphs){
@@ -87,10 +178,10 @@
       }
       let from=0,at;
       while((at=row.text.indexOf(word,from))!==-1){
-        if(word==='คณ'&&!/^คณ(?:สามารถ|สามารด)/.test(row.text.slice(at))||word==='ชอย'&&!/ไม่$/.test(row.text.slice(0,at))||word==='ทก'&&!/^ทกเรื/.test(row.text.slice(at))||word==='ได'&&!/^ได(?:ยิน|ตาม)/.test(row.text.slice(at))||word==='อยา'&&!/^อยาเช(?:ื่อ|อ)/.test(row.text.slice(at))||word==='ผู'&&!/^ผู(?:ประ[สศ]บภัย|ป่วย|ใช้งาน|ถือหุ้น)/.test(row.text.slice(at))||word==='ชวย'&&!/^ชวยเหลือ/.test(row.text.slice(at))){from=at+word.length;continue;}
+        if(word==='คณ'&&!/^คณ(?:สามารถ|สามารด)/.test(row.text.slice(at))||word==='ชอย'&&!/ไม่$/.test(row.text.slice(0,at))||word==='ทก'&&!/^ทกเรื/.test(row.text.slice(at))||word==='ได'&&!/^ได(?:ยิน|ตาม)/.test(row.text.slice(at))||word==='อยา'&&!/^อยาเช(?:ื่อ|อ)/.test(row.text.slice(at))||word==='ผู'&&!/^ผู(?:ประ[สศ]บภัย|ป่วย|ใช้งาน|ถือหุ้น)/.test(row.text.slice(at))||word==='ชวย'&&!/^ชวย(?:เหลือ|สรุป|ตรวจ|แก้)/.test(row.text.slice(at))){from=at+word.length;continue;}
         const end=at+word.length,gs=row.glyphs.filter(g=>g.end>at&&g.start<end);
         // A complete รถยนต์, or a longer compound, must not match this suffix rule.
-        if(word==='รถยนต'&&!/^(?:$|[\s.,:;!?()])/u.test(row.text.slice(end))){
+        if(word==='รถยนต'&&!/^(?:$|[\s.,:;!?()]|และไม่เกี่ยวข้อง|การปฏิบัติ)/u.test(row.text.slice(end))){
           from=end;continue;
         }
         // Partial glyphs and combining marks belonging to the next character
@@ -100,7 +191,8 @@
         // still sufficient to place a review mark at those printed letters.
         const startBoundary=boundaries.has(at),endBoundary=boundaries.has(end);
         const thaiJoined=startBoundary&&!endBoundary&&word.length>=3&&/^[\u0E00-\u0E7F]+$/.test(word);
-        const knownSpelling=clearPairs.has(word);
+        const knownSpelling=clearPairs.has(word)||contextPairs.has(word);
+        if(!matchesSpellingContext(word,row.text,at)){from=end;continue;}
         if((knownSpelling||startBoundary&&(endBoundary||thaiJoined))&&gs.length&&gs[0].start===at&&gs.at(-1).end===end&&
             !/^[\p{M}]/u.test(row.text.slice(end))){
           hits.push({box:union(gs.map(g=>g.box)),strikeY:strikeY(gs),line:row.text});
@@ -174,12 +266,12 @@
     return upper.length===1&&upper[0].width/upper[0].height>=1.4&&upper[0].height>=4;
   }
   // Connected white ink supplies bounds when decorative Thai is read as Latin.
-  function whiteParts(canvas,box){
+  function inkParts(canvas,box,dark=false){
     const x=Math.max(0,Math.floor(box[0])),y=Math.max(0,Math.floor(box[1]));
     const w=Math.min(canvas.width,Math.ceil(box[2]))-x,h=Math.min(canvas.height,Math.ceil(box[3]))-y;
     if(w<=0||h<=0||w*h>1000000)return [];
     const data=canvas.getContext('2d').getImageData(x,y,w,h).data,ink=new Uint8Array(w*h),parts=[];
-    for(let i=0;i<ink.length;i++){const a=data[i*4],b=data[i*4+1],c=data[i*4+2];ink[i]=Math.min(a,b,c)>205&&Math.max(a,b,c)-Math.min(a,b,c)<55?1:0;}
+    for(let i=0;i<ink.length;i++){const a=data[i*4],b=data[i*4+1],c=data[i*4+2];ink[i]=dark?Number(Math.max(a,b,c)<200):Number(Math.min(a,b,c)>205&&Math.max(a,b,c)-Math.min(a,b,c)<55);}
     for(let i=0;i<ink.length;i++)if(ink[i]){
       const stack=[i];ink[i]=0;let count=0,l=w,t=h,r=0,b=0;
       while(stack.length){const n=stack.pop(),xx=n%w,yy=Math.floor(n/w);count++;l=Math.min(l,xx);t=Math.min(t,yy);r=Math.max(r,xx+1);b=Math.max(b,yy+1);
@@ -192,7 +284,7 @@
     const proofs=[],free=rows.filter(r=>/^ws!?$/i.test(r.text.trim())&&r.confidence>=55&&r.glyphs?.every(g=>valid(g.box)));
     if(free.length===1){
       const box=union(free[0].glyphs.map(g=>g.box)),height=box[3]-box[1];
-      const parts=whiteParts(canvas,[box[0]-5,box[1]-height*.4,box[2]+5,box[3]+5]);
+      const parts=inkParts(canvas,[box[0]-5,box[1]-height*.4,box[2]+5,box[3]+5]);
       const bodies=parts.filter(b=>b[3]-b[1]>height*.45).sort((a,b)=>a[0]-b[0]);
       if(bodies.length===3&&(bodies[0][3]-bodies[0][1])>(bodies[1][3]-bodies[1][1])*1.15){
         const rr=bodies[1],upper=parts.some(b=>b[3]<rr[1]-2&&b[2]>rr[0]&&b[0]<rr[2]);
@@ -204,14 +296,130 @@
       const hit=hits[0],row=rows.find(r=>r.text===hit.line),at=row?.text.indexOf('พรีเซนต');
       const glyph=row?.glyphs?.[at+6];
       if(row?.text.slice(glyph?.start,glyph?.end)==='ต'&&valid(glyph.box)){
-        const g=glyph.box,parts=whiteParts(canvas,[g[0]-3,g[1]-(g[3]-g[1])*.65,g[2]+3,g[3]+3]);
+        const g=glyph.box,parts=inkParts(canvas,[g[0]-3,g[1]-(g[3]-g[1])*.65,g[2]+3,g[3]+3]);
         const body=parts.find(b=>b[3]-b[1]>(g[3]-g[1])*.6);
         if(body&&!parts.some(b=>b[3]<body[1]-2&&b[2]>body[0]&&b[0]<body[2])){
-          const word=whiteParts(canvas,[row.glyphs[0].box[0],g[1]-(g[3]-g[1]),row.glyphs.at(-1).box[2],g[3]+3]).filter(b=>b[2]>hit.box[0]+2&&b[0]<hit.box[2]-2);
+          const word=inkParts(canvas,[row.glyphs[0].box[0],g[1]-(g[3]-g[1]),row.glyphs.at(-1).box[2],g[3]+3]).filter(b=>b[2]>hit.box[0]+2&&b[0]<hit.box[2]-2);
           if(word.length)proofs.push({wrong:'พรีเซนต',correct:'พรีเซนต์',box:union(word),line:hit.line,pixelVerified:true,strikeY:(body[1]+body[3])/2});
         }
       }
     }return proofs;
+  }
+  // In this printed form, the misplaced tone joins the tall stem of ป.
+  // The detached mai taikhu in เป็น does not join it above the letter body.
+  function penMarkProofs(canvas, rows) {
+    const proofs = [];
+    for (const row of rows) {
+      if (row.confidence < 80) continue;
+      for (const match of row.text.matchAll(/ออก(เป็น)กระดาษ/g)) {
+        const start = match.index + 'ออก'.length;
+        const glyphs = row.glyphs.filter(g => g.start >= start && g.end <= start + 'เป็น'.length);
+        const stem = glyphs.find(g => g.start === start + 1);
+        if (!stem || glyphs[0]?.start !== start || glyphs.at(-1)?.end !== start + 'เป็น'.length) continue;
+        const [left, top, right] = stem.box;
+        const bodyTop = glyphs[0].box[1];
+        const width = right - left;
+        if (width < 12 || bodyTop - top < 8) continue;
+        const parts = inkParts(canvas, [left, top - 2, right + 1, bodyTop + 3], true);
+        const joinsStem = parts.some(([x, y, r, b]) =>
+          x > left && x < left + width * .45 && y >= top - 1 &&
+          r >= right - 1 && b >= bodyTop + 2);
+        if (joinsStem) {
+          proofs.push({wrong:'เป้น', correct:'เป็น', box:union(glyphs.map(g => g.box)),
+            line:row.text, pixelVerified:true, strikeY:strikeY(glyphs)});
+        }
+      }
+    }
+    return proofs;
+  }
+  // A wide upper mark above the vowel is mai tho, whereas mai ek is narrow.
+  function nueangMarkProofs(canvas, rows) {
+    const proofs = [];
+    for (const row of rows) {
+      if (row.confidence < 80) continue;
+      for (const match of row.text.matchAll(/ลดลง(เนื่อง)จาก/g)) {
+        const start = match.index + 'ลดลง'.length;
+        const end = start + match[1].length;
+        const glyphs = row.glyphs.filter(g => g.start >= start && g.end <= end);
+        if (glyphs[0]?.start !== start || glyphs.at(-1)?.end !== end) continue;
+        const box = union(glyphs.map(g => g.box));
+        const [, bodyTop, right, bottom] = glyphs[0].box;
+        const height = bottom - bodyTop;
+        const parts = inkParts(canvas, [right, bodyTop - height * 1.3, box[2], bodyTop - 1], true)
+          .sort((a, b) => a[1] - b[1]);
+        if (height < 14 || parts.length !== 2) continue;
+        const [mark, vowel] = parts;
+        const markWidth = mark[2] - mark[0], markHeight = mark[3] - mark[1];
+        if (mark[3] > vowel[1] || mark[0] < vowel[0] || mark[0] >= vowel[2] ||
+            markWidth < height * .45 || markWidth < markHeight * 1.15) continue;
+        proofs.push({wrong:'เนื้อง', correct:'เนื่อง', box:union([box, mark]), line:row.text,
+          pixelVerified:true, strikeY:(bodyTop + bottom)/2});
+      }
+    }
+    return proofs;
+  }
+  // OCR can normalize a narrow mai ek above ด to mai tho in ไม่ได้.
+  function daiMarkProofs(canvas, rows) {
+    const proofs = [];
+    for (const row of rows) {
+      if (row.confidence < 80) continue;
+      const match = /Modelไม่(ได้)$/i.exec(row.text);
+      if (!match) continue;
+      const start = row.text.length - match[1].length;
+      const glyphs = row.glyphs.filter(g => g.start >= start);
+      if (glyphs.length !== 3 || glyphs[0].start !== start) continue;
+      const letter = glyphs[1].box;
+      const tone = glyphs[2].box;
+      const bodyHeight = letter[3] - letter[1];
+      if (bodyHeight < 20) continue;
+      const parts = inkParts(canvas, [letter[0], tone[1], tone[2], letter[1] + bodyHeight * .31], true);
+      if (parts.length !== 1) continue;
+      const [x,y,r,b] = parts[0];
+      if (r-x > bodyHeight * .23 || b-y <= r-x || b-y < bodyHeight * .2) continue;
+      proofs.push({wrong:'ได่', correct:'ได้', box:union([glyphs[0].box, letter, parts[0]]),
+        line:row.text, pixelVerified:true, strikeY:(letter[1]+letter[3])/2});
+    }
+    return proofs;
+  }
+  function thamMarkProofs(canvas, rows) {
+    const proofs = [];
+    for (const row of rows) {
+      const hit = locate([row], 'ทา');
+      if (!hit.box) continue;
+      const at = row.text.indexOf('ทาซ');
+      const vowel = row.glyphs.find(g => g.start === at + 1)?.box;
+      if (!vowel) continue;
+      const [left,,right] = hit.box;
+      const [,top,,bottom] = vowel;
+      const height = bottom - top;
+      if (height < 14) continue;
+      // A printed ำ has ink above ท. Keep the check inside this word.
+      const upper = inkParts(canvas, [left, top - height * .65, right, top - 2], true);
+      const body = inkParts(canvas, [left, top, right, bottom], true);
+      if (upper.length || body.length !== 2) continue;
+      proofs.push({wrong:'ทา', correct:'ทำ', box:union(body), line:row.text,
+        pixelVerified:true, strikeY:(top+bottom)/2});
+    }
+    return proofs;
+  }
+  function thaoNanMarkProofs(canvas, rows) {
+    const proofs = [];
+    for (const row of rows) {
+      if (row.confidence < 80) continue;
+      const match = /HELM(เทานั้น)(?:i)?$/i.exec(row.text);
+      if (!match) continue;
+      const start = match.index + 'HELM'.length;
+      const end = start + match[1].length;
+      const glyphs = row.glyphs.filter(g => g.start >= start && g.end <= end);
+      const letter = glyphs.find(g => g.start === start + 1)?.box;
+      if (!letter || glyphs[0]?.start !== start || glyphs.at(-1)?.end !== end) continue;
+      const [left, top, right, bottom] = letter;
+      const height = bottom - top;
+      if (height < 14 || inkParts(canvas, [left, top - height * .8, right + 3, top - 2], true).length) continue;
+      proofs.push({wrong:'เทานั้น', correct:'เท่านั้น', box:union(glyphs.map(g=>g.box)),
+        line:row.text, pixelVerified:true, strikeY:(top+bottom)/2});
+    }
+    return proofs;
   }
   async function refineThaiMarks(worker,canvas,rows){
     const refinedLines=[],pixelCorrections=[],confirmed=new Set();
@@ -400,6 +608,29 @@
           }
         }catch(error){console.warn('Light ink OCR unavailable',error);}
         mask.width=mask.height=0;
+        // Dark lettering on colored cards needs a different reading from light ink.
+        const darkInk = document.createElement('canvas');
+        darkInk.width = c.width;
+        darkInk.height = c.height;
+        const darkContext = darkInk.getContext('2d');
+        const darkPixels = c.getContext('2d').getImageData(0, 0, c.width, c.height);
+        for (let i = 0; i < darkPixels.data.length; i += 4) {
+          const [r, g, b] = [darkPixels.data[i], darkPixels.data[i + 1], darkPixels.data[i + 2]];
+          const value = .213 * r + .715 * g + .072 * b < 97 ? 0 : 255;
+          darkPixels.data[i] = darkPixels.data[i + 1] = darkPixels.data[i + 2] = value;
+        }
+        darkContext.putImageData(darkPixels, 0, 0);
+        try {
+          signal?.throwIfAborted();
+          await worker.setParameters({tessedit_pageseg_mode:'11'});
+          const darkRows = lines((await worker.recognize(darkInk, {}, {text:true, blocks:true})).data);
+          alternativeLines.push(...darkRows.filter(row => row.confidence >= 80));
+        } catch (error) {
+          signal?.throwIfAborted();
+          console.warn('Dark ink OCR unavailable', error);
+        } finally {
+          darkInk.width = darkInk.height = 0;
+        }
         // Re-read each recovered line at larger size. The second glyph reading
         // is evidence against an OCR artifact such as การ misread as ภาร.
         for(const row of selected.filter(r=>r.text.length>=3&&r.glyphs.length).slice(0,45)){
@@ -409,11 +640,20 @@
           const crop=document.createElement('canvas');crop.width=(right-left)*scale;crop.height=(bottom-top)*scale;
           const cx=crop.getContext('2d');cx.drawImage(c,left,top,right-left,bottom-top,0,0,crop.width,crop.height);
           const bytes=cx.getImageData(0,0,crop.width,crop.height);
-          let green=0;
-          for(let i=0;i<bytes.data.length;i+=4)if(bytes.data[i+1]>bytes.data[i]+25&&bytes.data[i+1]>bytes.data[i+2]+25)green++;
-          const lightInk=green/(crop.width*crop.height)>.25;
+          let green=0, darkRed=0, bright=0;
+          for(let i=0;i<bytes.data.length;i+=4){
+            const r=bytes.data[i],g=bytes.data[i+1],b=bytes.data[i+2];
+            if(g>r+25&&g>b+25)green++;
+            if(r>g+25&&r>b+25&&g<115)darkRed++;
+            if(g>160&&b>160)bright++;
+          }
+          const area=crop.width*crop.height;
+          const lightInk=green/area>.25;
+          const redInk=darkRed/area>.025&&bright/area>.25;
           for(let i=0;i<bytes.data.length;i+=4){const r=bytes.data[i],g=bytes.data[i+1],b=bytes.data[i+2];
-            const ink=lightInk?Math.min(r,g,b)>205&&Math.max(r,g,b)-Math.min(r,g,b)<55:g>=135;
+            const monochrome = Math.max(r,g,b) - Math.min(r,g,b) < 40;
+            const ink=redInk?r>g+25&&r>b+25&&g<115:
+              lightInk?Math.min(r,g,b)>205&&monochrome:monochrome?g<135:g>=135;
             bytes.data[i]=bytes.data[i+1]=bytes.data[i+2]=ink?0:255;bytes.data[i+3]=255;
           }
           cx.putImageData(bytes,0,0);
@@ -429,7 +669,7 @@
         }
       }
       const extra=await refineThaiMarks(worker,c,selected);
-      extra.pixelCorrections.push(...posterMarkProofs(c,selected));
+      extra.pixelCorrections.push(...posterMarkProofs(c,selected), ...penMarkProofs(c,selected), ...nueangMarkProofs(c,selected), ...daiMarkProofs(c,selected), ...thamMarkProofs(c,alternativeLines), ...thaoNanMarkProofs(c,selected));
       return {width:im.width,height:im.height,lines:selected,alternativeLines,validationLines,...extra};
     }finally{signal?.removeEventListener('abort',onAbort);im.close();await stopWorker();}
   }
@@ -488,7 +728,7 @@
     if(Array.isArray(ocr?.lines)){
       const existing=new Set([...panel.querySelectorAll('li mark')].map(n=>n.textContent.trim().normalize('NFC')));
       let list=panel.querySelector('ul');
-      for(const [wrong,correct] of clearPairs){
+      for(const [wrong,correct] of [...clearPairs,...Array.from(contextPairs, ([word, pair]) => [word, pair.correct])]){
         if(wrong==='Banano'&&!ocr.lines.some(r=>/NanoBanana/.test(r.text.replace(/\s/g,''))))continue;
         if(existing.has(wrong)||!(locateBest(ocr,wrong).box||locate(ocr.lines,wrong,true).length))continue;
         if(!list){list=doc.createElement('ul');panel.append(list);}
@@ -544,7 +784,6 @@
       panel.prepend(warning);
     }
     const heading=panel.querySelector('h3');if(heading)heading.textContent='คำแนะนำที่ต้องตรวจทาน ('+count+')';
-    const notice=doc.createElement('p');notice.textContent='สีแดงคือคู่คำที่ผ่านกฎสะกด สีส้มคือคำแนะนำที่ OCR พบตำแหน่งจริงแต่ยังต้องตรวจทาน ไม่ได้แก้ไขไฟล์ต้นฉบับ และอาจตรวจคำผิดได้ไม่ครบ';panel.prepend(notice);
     const status=panel.querySelector('.location-status');if(status)status.textContent='ขีดแดง '+verifiedCount+' จุด · ขีดส้ม '+(located-verifiedCount)+' จุด · ยังขีดไม่ได้ '+unlocated+' รายการ';
     const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · strike-word-27';
     const banner=doc.createElement('p');
@@ -552,13 +791,45 @@
     banner.textContent='คำแนะนำ '+count+' รายการ · พบตำแหน่งบนภาพ '+located+' รายการ · ยังขีดไม่ได้ '+unlocated+' รายการ';
     banner.style.cssText='box-sizing:border-box;width:100%;margin:0 0 10px;padding:10px 14px;border:1px solid #9bdedb;border-radius:10px;background:#f4fffe;color:#174b49;font:14px/1.5 Arial,Tahoma,sans-serif;text-align:left';
     wrapper.before(banner);
+    if (count) {
+      for (const paragraph of panel.querySelectorAll('p')) {
+        if (paragraph.textContent.trim().startsWith('ยังไม่พบคำแนะนำ')) paragraph.remove();
+      }
+    }
+    panel.classList.add('ocr-image-corrections');
+    const layout = doc.createElement('style');
+    layout.textContent = `
+      .correction-panel.ocr-image-corrections {
+        display: block !important;
+        box-sizing: border-box;
+      }
+      .ocr-image-corrections ul {
+        display: flex !important;
+        flex-wrap: wrap;
+        gap: 6px 16px;
+        width: 100%;
+        margin: 8px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+      .ocr-image-corrections li {
+        max-width: 100%;
+        margin: 0;
+        overflow-wrap: anywhere;
+      }
+      .ocr-image-corrections h3,
+      .ocr-image-corrections p {
+        margin: 0 0 6px;
+      }
+    `;
+    doc.head.append(layout);
     collapseReview(doc,panel);
     return {html:'<!doctype html>'+doc.documentElement.outerHTML,located,unlocated,reviewCount:count,incompleteCoverage,checkedLines};
   }
   function renderLocal(imageUrl, ocr) {
     const doc = document.implementation.createHTMLDocument('ผลตรวจเบื้องต้น');
     const notice = doc.createElement('p');
-    notice.textContent = 'บริการตรวจฉบับเต็มไม่พร้อม ผลนี้มาจาก OCR และกฎสะกดในเบราว์เซอร์ โปรดตรวจทานต้นฉบับ';
+    notice.textContent = 'ผลตรวจเบื้องต้น อาจพบคำผิดไม่ครบ';
     const wrapper = doc.createElement('div');
     wrapper.className = 'wrapper';
     wrapper.style.cssText = 'position:relative;width:fit-content;max-width:100%;margin:auto';

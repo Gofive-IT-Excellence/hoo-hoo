@@ -389,6 +389,20 @@ async function readImageLocations(file, parentSignal) {
   }
 }
 
+async function renderLocalImageResult(file, ocr, isCurrentRequest) {
+  const imageUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+  if (!isCurrentRequest()) return;
+  const result = HooHooWordLocator.renderLocal(imageUrl, ocr);
+  resultBox.classList.remove("is-loading");
+  renderResultHtml(result.html);
+  statusText.textContent = "ผลตรวจเบื้องต้น";
+}
+
 let requestBusy = false;
 async function sendToN8N() {
   if (requestBusy) return;
@@ -456,6 +470,14 @@ async function sendToN8N() {
       catch (error) { console.warn('Browser OCR unavailable', error); }
     }
     if (!isCurrentRequest()) return;
+    const localImagePreview = ["localhost", "127.0.0.1"].includes(location.hostname)
+      && new URLSearchParams(location.search).get("local-ocr") === "1"
+      && effectiveMode === "single" && /^image\//.test(fileA.type);
+    if (localImagePreview) {
+      if (!browserLocator?.lines.length) throw new Error("อ่านตัวอักษรจากภาพในเบราว์เซอร์ไม่สำเร็จ");
+      await renderLocalImageResult(fileA, browserLocator, isCurrentRequest);
+      return;
+    }
     const browserOcr = toBrowserOcrPayload(browserLocator);
 
     const form = new FormData();
@@ -495,6 +517,11 @@ setProgress(browserOcr ? "กำลังส่งข้อความและ
 
     if (!isCurrentRequest()) return;
     const html = Array.isArray(json) ? json[0]?.html : json?.html;
+
+    if (browserLocator?.lines.length && (typeof html !== "string" || !html.trim())) {
+      // Use the local image result when the service sends no usable result.
+      throw new Error("บริการตรวจเอกสารไม่ได้ส่งผลตรวจภาพกลับมา");
+    }
 
     if (html) {
       let finalHtml = html;
@@ -552,16 +579,7 @@ ${JSON.stringify(json, null, 2)}
     resultBox.classList.remove("is-loading");
     if (browserLocator?.lines.length) {
       try {
-        const imageUrl = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = () => reject(reader.error);
-          reader.readAsDataURL(fileA);
-        });
-        if (!isCurrentRequest()) return;
-        const localResult = HooHooWordLocator.renderLocal(imageUrl, browserLocator);
-        renderResultHtml(localResult.html);
-        statusText.textContent = "ผลตรวจเบื้องต้น — บริการตรวจฉบับเต็มไม่พร้อม";
+        await renderLocalImageResult(fileA, browserLocator, isCurrentRequest);
         return;
       } catch (fallbackError) {
         console.warn("Local spelling result unavailable", fallbackError);
