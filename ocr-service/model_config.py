@@ -19,4 +19,6 @@ def create_ocr():
         use_doc_unwarping=False,
         use_textline_orientation=False,
         device="cpu",
+        enable_mkldnn=False,
+        cpu_threads=2,
     )

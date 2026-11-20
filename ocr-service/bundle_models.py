@@ -13,6 +13,8 @@ PaddleOCR(
     use_doc_unwarping=False,
     use_textline_orientation=False,
     device="cpu",
+        enable_mkldnn=False,
+        cpu_threads=2,
 )
 MODEL_ROOT.mkdir(parents=True, exist_ok=True)
 for name in ("PP-OCRv5_mobile_det", "th_PP-OCRv5_mobile_rec"):

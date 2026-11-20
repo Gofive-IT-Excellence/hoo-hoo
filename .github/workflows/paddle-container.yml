@@ -23,19 +23,22 @@ jobs:
           done
           docker exec -i hoo-test python <<'PYTEST'
           import base64, io, json, urllib.request
-          from PIL import Image
+          from PIL import Image, ImageDraw, ImageFont
           root = 'http://127.0.0.1:8080'
           health = json.load(urllib.request.urlopen(root + '/ocr/health', timeout=10))
           assert health['engine'] == 'paddleocr', health
           html = urllib.request.urlopen(root).read().decode()
           assert '20261120-paddle-bundled' in html
           buffer = io.BytesIO()
-          Image.new('RGB', (320, 160), 'white').save(buffer, format='PNG')
+          image = Image.new('RGB', (320, 160), 'white')
+          ImageDraw.Draw(image).text((20, 45), 'HELM TEST', font=ImageFont.load_default(size=42), fill='black')
+          image.save(buffer, format='PNG')
           data = json.dumps({'base64': base64.b64encode(buffer.getvalue()).decode()}).encode()
           req = urllib.request.Request(root + '/ocr', data=data, headers={'Content-Type': 'application/json'})
           result = json.load(urllib.request.urlopen(req, timeout=180))
           assert (result['width'], result['height']) == (320, 160), result
-          assert isinstance(result['words'], list)
+          assert result['words'], result
+          assert any(word['characters'] for word in result['words']), result
           print('Offline model initialization, website and actual OCR inference passed')
           PYTEST
       - name: Container logs
