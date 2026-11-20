@@ -28,7 +28,9 @@ jobs:
           health = json.load(urllib.request.urlopen(root + '/ocr/health', timeout=10))
           assert health['engine'] == 'paddleocr', health
           html = urllib.request.urlopen(root).read().decode()
-          assert '20261120-paddle-bundled' in html
+          assert 'ocr-word-locator-v2.js?v=' in html
+          script = urllib.request.urlopen(root + '/script.js').read().decode()
+          assert 'readPaddleImage' in script
           buffer = io.BytesIO()
           image = Image.new('RGB', (320, 160), 'white')
           ImageDraw.Draw(image).text((20, 45), 'HELM TEST', font=ImageFont.load_default(size=42), fill='black')
