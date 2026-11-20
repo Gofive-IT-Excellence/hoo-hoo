@@ -134,92 +134,12 @@
     mark.style.width=(r-x)/ocr.width*100+'%';
     label.className=verified?'verified-spelling-correction':'review-spelling-correction';
     label.textContent='→ '+corrected;label.title=mark.title;label.setAttribute('aria-label',mark.title);
-    label.dataset.wordBox = JSON.stringify(match.box.map((v,i) => v / (i%2 ? ocr.height : ocr.width) * 1000));
     label.style.cssText='position:absolute;z-index:4;color:'+color+';font:700 clamp(9px,'+labelSize+'cqw,16px)/1.15 Arial,Tahoma,sans-serif;white-space:nowrap;background:transparent;border:0;padding:0;box-shadow:none;-webkit-text-stroke:1px #fff;paint-order:stroke fill;text-shadow:0 1px 1px #fff;transform:translate(-50%,'+(below?'0':'-100%')+');pointer-events:auto;';
     label.style.left=(x+r)/2/ocr.width*100+'%';label.style.top=below
       ? (b+gap)/ocr.height*100+'%'
       : 'max('+Math.max(0,y-gap)/ocr.height*100+'%, clamp(10.35px,'+(Number(labelSize)*1.15)+'cqw,18.4px))';
     wrapper.append(mark,label);
   }
-  function chooseLabelBox(anchor, width, height, bounds, obstacles, occupied) {
-    const gap = 4, middleX = (anchor[0] + anchor[2]) / 2, middleY = (anchor[1] + anchor[3]) / 2;
-    const candidates = [
-      [middleX - width/2, anchor[1] - gap - height],
-      [middleX - width/2, anchor[3] + gap],
-      [anchor[2] + gap, middleY - height/2],
-      [anchor[0] - gap - width, middleY - height/2]
-    ];
-    // Blank page margins offer room when the document's line spacing is tight.
-    for (const lane of [0, -1, 1, -2, 2, -3, 3]) {
-      const top = middleY - height/2 + lane * (height + gap);
-      candidates.push([gap, top], [bounds[0] - width - gap, top]);
-    }
-    const overlaps = (a,b,pad) => a[0] < b[2]+pad && a[2] > b[0]-pad && a[1] < b[3]+pad && a[3] > b[1]-pad;
-    for (const [left,top] of candidates) {
-      const box = [left,top,left+width,top+height];
-      if (box[0] < 0 || box[1] < 0 || box[2] > bounds[0] || box[3] > bounds[1]) continue;
-      if (obstacles.some(other => overlaps(box,other,2)) || occupied.some(other => overlaps(box,other,gap))) continue;
-      return box;
-    }
-    return null;
-  }
-
-  function layoutCorrectionLabels(doc) {
-    for (const wrapper of doc.querySelectorAll('.wrapper')) {
-      const image = wrapper.querySelector('img'), imageRect = image?.getBoundingClientRect();
-      if (!imageRect?.width || !imageRect.height) continue;
-      const width = imageRect.width, height = imageRect.height;
-      const oldStrip = wrapper.nextElementSibling?.classList.contains('correction-label-overflow') ? wrapper.nextElementSibling : null;
-      const labels = [...wrapper.querySelectorAll('[data-word-box]'), ...(oldStrip?.querySelectorAll('[data-word-box]') || [])];
-      if (!labels.length) continue;
-      const occupied = [];
-      let boxes;
-      try { boxes = JSON.parse(wrapper.dataset.ocrTextBoxes || '[]'); } catch { boxes = []; }
-      const scale = box => box.map((v,i) => v / 1000 * (i%2 ? height : width));
-      const obstacles = boxes.filter(valid).map(scale);
-      wrapper.querySelectorAll('.correction-leader').forEach(node => node.remove());
-      const strip = doc.createElement('div'); strip.className = 'correction-label-overflow';
-      strip.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px 14px;margin:8px 0;font:12px/1.5 Arial,Tahoma,sans-serif;color:#dc2626;';
-      const svg = doc.createElementNS('http://www.w3.org/2000/svg','svg');
-      svg.classList.add('correction-leader');svg.setAttribute('viewBox','0 0 '+width+' '+height);
-      svg.setAttribute('aria-hidden','true');
-      svg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2;overflow:visible';
-      for (const label of labels) {
-        let anchor;
-        try { anchor = scale(JSON.parse(label.dataset.wordBox)); } catch { continue; }
-        if (!valid(anchor)) continue;
-        if (!label.dataset.baseLabelStyle) label.dataset.baseLabelStyle = label.style.cssText;
-        if (!label.dataset.baseLabelText) label.dataset.baseLabelText = label.textContent;
-        label.style.cssText = label.dataset.baseLabelStyle;
-        label.textContent = label.dataset.baseLabelText;
-        wrapper.append(label);
-        const rect = label.getBoundingClientRect();
-        if (!rect.width || !rect.height) continue;
-        const box = chooseLabelBox(anchor,rect.width,rect.height,[width,height],obstacles,occupied);
-        if (!box) {
-          // No free space: show the pair below the image instead of covering its text.
-          label.textContent = label.title.split(' — ')[0].replace(/^(?:คำผิดที่ยืนยัน: |คำแนะนำให้ตรวจทาน: )/,'');
-          label.style.cssText = 'position:static;max-width:100%;white-space:normal;overflow-wrap:anywhere;color:#dc2626;font:700 12px/1.5 Arial,Tahoma,sans-serif;transform:none;';
-          strip.append(label);
-          continue;
-        }
-        occupied.push(box);
-        label.style.left = box[0]/width*100+'%';label.style.top = box[1]/height*100+'%';
-        label.style.transform = 'none';
-        const cx = (anchor[0]+anchor[2])/2, cy = (anchor[1]+anchor[3])/2;
-        const lx = Math.max(box[0],Math.min(box[2],cx)), ly = Math.max(box[1],Math.min(box[3],cy));
-        if (Math.abs(lx-cx) > 10 || Math.abs(ly-cy) > rect.height+8) {
-          const line = doc.createElementNS('http://www.w3.org/2000/svg','line');
-          for (const [key,value] of Object.entries({x1:cx,y1:cy,x2:lx,y2:ly,stroke:label.style.color,'stroke-width':1,'stroke-opacity':.55})) line.setAttribute(key,String(value));
-          svg.append(line);
-        }
-      }
-      oldStrip?.remove();
-      if (svg.childElementCount) wrapper.append(svg);
-      if (strip.childElementCount) wrapper.after(strip);
-    }
-  }
-
   function paddleRegionMatch(ocr, original) {
     const normalize = text => String(text).normalize('NFC').replace(/\s/g, '');
     const word = normalize(original);
@@ -930,13 +850,6 @@
       if(!alternatives.has(alternativeKey(original, li)))alternatives.set(alternativeKey(original, li),new Set());
       alternatives.get(alternativeKey(original, li)).add(li.textContent.slice(at+1).trim().normalize('NFC'));
     }
-    const textBoxes = [...(ocr.paddleRegions || []).map(region => region.box),
-      ...(ocr.lines || []).map(row => {
-        const boxes = (row.glyphs || []).map(g => g.box).filter(valid);
-        return boxes.length ? union(boxes) : null;
-      })].filter(valid);
-    wrapper.dataset.ocrTextBoxes = JSON.stringify(textBoxes.map(box =>
-      box.map((v,i) => v / (i%2 ? ocr.height : ocr.width) * 1000)));
     const fullOcr = ocr;
     const seen=new Set();let located=0,verifiedCount=0,unlocated=0;
     for(const li of panel.querySelectorAll('li')){
@@ -1211,7 +1124,7 @@ function pdfLowerVowelIssues(operatorList, OPS) {
     }finally{await pdf.destroy();}
   }
 
-  const api={chooseLabelBox,layoutCorrectionLabels,missingStackedTone,lines,locate,read,reanchor,renderLocal,preserveOriginal,canMark,annotatePdf,pdfLowerVowelIssues,annotatePdfLayout};
+  const api={missingStackedTone,lines,locate,read,reanchor,renderLocal,preserveOriginal,canMark,annotatePdf,pdfLowerVowelIssues,annotatePdfLayout};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   else root.HooHooWordLocator=api;
 })(typeof window==='undefined'?globalThis:window);

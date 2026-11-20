@@ -701,7 +701,6 @@ function showCheckingState() {
 }
 
 function renderResultHtml(html) {
-  resultBox.querySelector('.n8n-result-frame')?.cleanupCorrectionLayout?.();
   resultBox.innerHTML = `
     <div class="n8n-frame-wrap">
       <iframe class="n8n-result-frame" title="ผลลัพธ์การตรวจ" scrolling="no"></iframe>
@@ -713,38 +712,11 @@ function renderResultHtml(html) {
   frame.srcdoc = buildResultFrameHtml(html);
   frame.addEventListener("load", () => {
     setupResultCoordinates(frame);
-    setupCorrectionLabelLayout(frame);
     resizeResultFrame(frame);
     requestAnimationFrame(() => resizeResultFrame(frame));
     setTimeout(() => resizeResultFrame(frame), 250);
     setTimeout(() => resizeResultFrame(frame), 800);
   });
-}
-
-function setupCorrectionLabelLayout(frame) {
-  if (!window.HooHooWordLocator?.layoutCorrectionLabels || !frame.contentDocument) return;
-  const doc = frame.contentDocument;
-  let pending = 0, disposed = false;
-  const refresh = () => {
-    if (disposed || pending) return;
-    pending = requestAnimationFrame(() => {
-      pending = 0;
-      if (disposed || !frame.isConnected) return;
-      HooHooWordLocator.layoutCorrectionLabels(doc);
-      resizeResultFrame(frame);
-    });
-  };
-  const images = [...doc.querySelectorAll('.wrapper img')];
-  const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(refresh) : null;
-  for (const image of images) { image.addEventListener('load',refresh);observer?.observe(image); }
-  window.addEventListener('resize',refresh);
-  doc.fonts?.ready.then(refresh);
-  frame.cleanupCorrectionLayout = () => {
-    disposed = true;observer?.disconnect();cancelAnimationFrame(pending);
-    window.removeEventListener('resize',refresh);
-    for (const image of images) image.removeEventListener('load',refresh);
-  };
-  refresh();
 }
 
 function buildResultFrameHtml(html) {
