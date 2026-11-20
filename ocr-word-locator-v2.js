@@ -4,6 +4,15 @@
   const valid=b=>Array.isArray(b)&&b.length===4&&b.every(Number.isFinite)&&b[2]>b[0]&&b[3]>b[1];
   const union=bs=>[Math.min(...bs.map(b=>b[0])),Math.min(...bs.map(b=>b[1])),Math.max(...bs.map(b=>b[2])),Math.max(...bs.map(b=>b[3]))];
   // Narrow spelling rules; never treat an arbitrary AI replacement as verified.
+  function preservesPromptSpelling(ocr, original, corrected) {
+    // เด็ด is valid in "Prompt เด็ด". OCR may omit เ, but replacing
+    // the phrase with เด็ก changes its meaning rather than fixing spelling.
+    if (!['เด็ด', 'ด็ด'].includes(original) || corrected !== 'เด็ก') return false;
+    const sources = [ocr?.lines, ocr?.validationLines, ocr?.paddleRegions];
+    return sources.some(rows => Array.isArray(rows) &&
+      /Prompt(?:เด็ด|ด็ด)/i.test(rows.map(row => row.text || '').join('').replace(/\s/g, '')));
+  }
+
   const clearPairs=new Map(Object.entries({'อนุญาติ':'อนุญาต','ประมวณผล':'ประมวลผล','บริสัท':'บริษัท','ข้อมุล':'ข้อมูล','ข้อตวาม':'ข้อความ','บันทก':'บันทึก','ลกษณะ':'ลักษณะ','กำนด':'กำหนด','กํานด':'กำหนด','หน่ยว':'หน่วย','รายล่ะเอียด':'รายละเอียด','ทังหมด':'ทั้งหมด','ปรากฎ':'ปรากฏ','สังเกตุ':'สังเกต','คำนวน':'คำนวณ','บอกล':'บอกลา','วิดีโด':'วิดีโอ','พรีเซนต':'พรีเซนต์','Goegle':'Google','วิดิทัศน์':'วีดิทัศน์','วิดีทัศน์':'วีดิทัศน์','วีดีทัศน์':'วีดิทัศน์','ประศบภัย':'ประสบภัย','ชวย':'ช่วย','ผู':'ผู้','ทวม':'ท่วม','ภากไต้':'ภาคใต้','ฝรัง':'ฝรั่ง','ได':'ได้','อยา':'อย่า','ประโยบ':'ประโยค','ทก':'ทุก','จรง':'จริง','จินตนากาน':'จินตนาการ','Banano':'Banana','เงน':'เงิน','คณ':'คุณ','สามารด':'สามารถ','สถานการณ':'สถานการณ์','รถยนต':'รถยนต์','ประกน':'ประกัน','ชอย':'ชอบ','อินโฟกราฟฟิก':'อินโฟกราฟิก','บ้าล':'บ้าน','ประหยด':'ประหยัด','ประหยับ':'ประหยัด','ประหยัม':'ประหยัด','ง่าน':'ง่าย'}));
   // Require nearby text where the OCR token can also occur in valid usage.
   const contextPairs = new Map([
@@ -751,6 +760,7 @@
       if(!mark){unlocated++;continue;}
       const original=mark.textContent.trim(),all=li.textContent;
       const arrow=all.indexOf('→'),corrected=arrow<0?'':all.slice(arrow+1).trim();
+      if (preservesPromptSpelling(ocr, original, corrected)) {li.remove();continue;}
       const key=JSON.stringify([original,corrected]);
       if(seen.has(key)){li.remove();continue;}seen.add(key);
       if(original.normalize('NFC')===corrected.normalize('NFC')){li.remove();continue;}
