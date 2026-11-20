@@ -117,6 +117,11 @@
       mark.textContent = correction.wrong; bold.textContent = correction.correct;
       li.append(mark, doc.createTextNode(' → '), bold); list.append(li);
     }
+    if (report.checked !== report.total && report.failures?.length) {
+      const failure = doc.createElement('p'); failure.className = 'context-audit-service-error';
+      failure.textContent = 'บริการตรวจคำผิดยังตรวจไม่ครบ กรุณาลองส่งตรวจอีกครั้ง';
+      panel.append(failure);
+    }
     panel.append(heading, list); doc.body.append(coverage, wrapper, panel);
     return {html: '<!doctype html>' + doc.documentElement.outerHTML,
       incomplete: report.checked !== report.total,

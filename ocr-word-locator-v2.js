@@ -898,7 +898,9 @@
     const count=panel.querySelectorAll('li').length;
     if (incompleteCoverage && count === 0) {
       const warning = doc.createElement('p');
-      warning.textContent = checkedLines === 0
+      warning.textContent = doc.querySelector('.context-audit-service-error')
+        ? 'บริการตรวจคำผิดยังทำงานไม่สำเร็จ ผลนี้ยังยืนยันความถูกต้องของข้อความไม่ได้'
+        : checkedLines === 0
         ? 'ยังยืนยันผลตรวจไม่ได้ ลองใช้ภาพต้นฉบับที่คมชัดกว่า หรือแบ่งภาพเป็นส่วน ๆ แล้วส่งตรวจอีกครั้ง'
         : 'ยังตรวจไม่ครบทุกบรรทัด โปรดตรวจทานส่วนที่เหลือกับต้นฉบับ';
       panel.prepend(warning);
