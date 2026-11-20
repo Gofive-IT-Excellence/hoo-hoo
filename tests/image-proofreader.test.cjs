@@ -172,3 +172,21 @@ test('identical replacement words at different source positions are retained', (
   assert.equal(output.reviewCount,2);
   assert.equal(output.located,2);
 });
+
+test('ได้ is not marked by matching ได before its existing tone mark', () => {
+  const report = {total: 1, checked: 1, unchecked: [], corrections: [{wrong: 'ได', correct: 'ได้', indices: [0]}]};
+  const output = locator.reanchor(audit.render(report,'test.png').html, {
+    width:500,height:200,lines:[],paddleRegions:[region('ได้เลย',10)]
+  });
+  assert.equal(output.located,0);
+  assert.equal(output.reviewCount,0);
+  const parsed = audit.parse({lines:[{id:0,corrections:[{wrong:'ได',correct:'ได้'}]}]},
+    [{...row('ได้เลย',0),index:0}]);
+  assert.deepEqual(parsed.corrections,[]);
+});
+
+test('a genuinely missing tone mark remains eligible for correction', () => {
+  const parsed = audit.parse({lines:[{id:0,corrections:[{wrong:'ได',correct:'ได้'}]}]},
+    [{...row('ไดเลย',0),index:0}]);
+  assert.equal(parsed.corrections.length,1);
+});

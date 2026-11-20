@@ -35,6 +35,8 @@
           const {wrong, correct} = correction || {};
           if (typeof wrong !== 'string' || typeof correct !== 'string' || !wrong || !correct ||
               !row.text.includes(wrong) || wrong.length > 100 || correct.length > 100) { valid = false; continue; }
+          const starts = [...row.text.matchAll(new RegExp(wrong.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gu'))].map(match => match.index);
+          if (!starts.some(start => !/^[\p{M}]/u.test(row.text.slice(start + wrong.length)))) continue;
           if (compact(wrong) !== compact(correct)) accepted.push({wrong, correct, indices: [row.index]});
         }
         if (valid) { checked.push(row.index); corrections.push(...accepted); }

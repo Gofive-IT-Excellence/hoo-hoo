@@ -144,12 +144,20 @@
     const normalize = text => String(text).normalize('NFC').replace(/\s/g, '');
     const word = normalize(original);
     if (!word) return null;
-    const regions = (ocr?.paddleRegions || []).filter(region =>
-      valid(region.box) && normalize(region.text).includes(word));
-    if (regions.length !== 1) return null;
-    const region = regions[0];
-    const start = region.text.indexOf(original);
-    const end = start + original.length;
+    const matches = [];
+    for (const region of ocr?.paddleRegions || []) {
+      if (!valid(region.box)) continue;
+      let start = region.text.indexOf(original);
+      while (start >= 0) {
+        const end = start + original.length;
+        // A following vowel/tone mark belongs to this glyph. Do not match
+        // ได inside the already correct ได้ (or any equivalent partial word).
+        if (!/^[\p{M}]/u.test(region.text.slice(end))) matches.push({region, start, end});
+        start = region.text.indexOf(original, start + Math.max(1, original.length));
+      }
+    }
+    if (matches.length !== 1) return null;
+    const {region, start, end} = matches[0];
     const characters = (region.characters || []).filter(g => g.start < end && g.end > start);
     const wordBox = start >= 0 && characters[0]?.start === start && characters.at(-1)?.end === end
       ? union(characters.map(g => g.box).filter(valid)) : null;
@@ -820,6 +828,17 @@
       const wrong=li.querySelector('mark')?.textContent.trim()||'';
       const replacement=li.textContent.split('→')[1]?.trim()||'';
       const candidateOcr = scopeCorrection(ocr, li);
+      let partialGlyph = false, completeGlyph = false;
+      if (wrong) for (const region of candidateOcr?.paddleRegions || []) {
+        let start = region.text.indexOf(wrong);
+        while (start >= 0) {
+          if (/^[\p{M}]/u.test(region.text.slice(start + wrong.length))) partialGlyph = true;
+          else completeGlyph = true;
+          start = region.text.indexOf(wrong, start + wrong.length);
+        }
+      }
+      if (partialGlyph && !completeGlyph) {li.remove();continue;}
+
       if(wrong.includes('+')||replacement.includes('+')||differsOnlyByThaiTone(wrong,replacement)&&clearPairs.get(wrong)!==replacement&&!paddleRegionMatch(candidateOcr,wrong)||poster&&wrong==='/ป'&&replacement==='AI'||
         wrong==='ใบแจ้งหนี'&&ocr?.confirmed?.includes('ใบแจ้งหนี้'))li.remove();
       // "โอนเงินผ่านบัญชี" is a valid payment instruction. A model's

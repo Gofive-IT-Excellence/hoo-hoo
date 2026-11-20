@@ -39,6 +39,16 @@ class ProofreadingTests(unittest.TestCase):
             {'wrong': 'ไห้', 'correct': 'ให้'}]}]}, [{'id': 0, 'text': 'ไห้ข้อมูล'}])
         self.assertEqual(result['lines'][0]['corrections'], [{'wrong': 'ไห้', 'correct': 'ให้'}])
 
+    def test_existing_tone_mark_is_not_treated_as_missing(self):
+        result = validate_result({'lines': [{'id': 0, 'corrections': [
+            {'wrong': 'ได', 'correct': 'ได้'}]}]}, [{'id': 0, 'text': 'ได้เลย'}])
+        self.assertEqual(result['lines'][0]['corrections'], [])
+
+    def test_missing_tone_mark_can_still_be_corrected(self):
+        result = validate_result({'lines': [{'id': 0, 'corrections': [
+            {'wrong': 'ได', 'correct': 'ได้'}]}]}, [{'id': 0, 'text': 'ไดเลย'}])
+        self.assertEqual(len(result['lines'][0]['corrections']), 1)
+
     def test_invalid_and_oversized_requests(self):
         for rows in [[], [{'id': True, 'text': 'ข้อมูล'}],
                      [{'id': 0, 'text': 'ก' * 10001}],

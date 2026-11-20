@@ -1,6 +1,7 @@
 """Contextual spelling audit, independent of the frontend's known-typo rules."""
 import json
 import os
+import unicodedata
 import urllib.request
 from urllib.error import HTTPError, URLError
 
@@ -36,6 +37,16 @@ def changes_valid_function_word(wrong, correct):
         end_wrong -= 1
         end_correct -= 1
     return wrong[start:end_wrong] in FUNCTION_WORDS
+
+
+def contains_complete_span(text, word):
+    start = text.find(word)
+    while start >= 0:
+        end = start + len(word)
+        if end == len(text) or not unicodedata.category(text[end]).startswith('M'):
+            return True
+        start = text.find(word, start + max(1, len(word)))
+    return False
 
 
 def configured():
@@ -83,6 +94,8 @@ def validate_result(result, lines):
                     not wrong or not correct or wrong not in source[index] or
                     len(wrong) > 100 or len(correct) > 100):
                 invalid = True
+                continue
+            if not contains_complete_span(source[index], wrong):
                 continue
             if changes_valid_function_word(wrong, correct):
                 continue
