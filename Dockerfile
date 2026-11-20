@@ -1,6 +1,6 @@
 FROM python:3.11-slim-bookworm
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 OCR_MODEL_ROOT=/opt/ocr-models
-RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 libglib2.0-0 nginx tini && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 libglib2.0-0 libgl1 nginx tini && rm -rf /var/lib/apt/lists/*
 WORKDIR /app/ocr-service
 COPY ocr-service/requirements.txt .
 RUN pip install -r requirements.txt
