@@ -2,7 +2,7 @@ name: PaddleOCR container check
 on:
   push:
     branches: [main]
-    paths: [Dockerfile, 'ocr-service/**', '.github/workflows/paddle-container.yml']
+    paths: [Dockerfile, 'ocr-service/**', 'tests/**', 'package*.json', 'image-proofreader.js', 'script.js', 'ocr-word-locator-v2.js', '.github/workflows/paddle-container.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -12,6 +12,15 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Test contextual audit and occurrence mapping
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm test
+          python3 -m unittest discover -s ocr-service -p 'test_*.py'
       - name: Build bundled OCR image
         run: docker build -t hoo-hoo-paddle .
       - name: Verify offline startup, website and OCR
@@ -31,6 +40,10 @@ jobs:
           assert 'ocr-word-locator-v2.js?v=' in html
           script = urllib.request.urlopen(root + '/script.js').read().decode()
           assert 'readPaddleImage' in script
+          auditor = urllib.request.urlopen(root + '/image-proofreader.js').read().decode()
+          assert 'HooHooImageAudit' in auditor
+          model_health = json.load(urllib.request.urlopen(root + '/proofread/health'))
+          assert model_health == {'configured': False, 'engine': 'contextual-line-audit'}, model_health
           buffer = io.BytesIO()
           image = Image.new('RGB', (320, 160), 'white')
           ImageDraw.Draw(image).text((20, 45), 'HELM TEST', font=ImageFont.load_default(size=42), fill='black')

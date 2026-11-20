@@ -156,6 +156,23 @@
     return {...region, wordBox, start};
   }
 
+  function scopeCorrection(ocr, li) {
+    const raw = li.getAttribute('data-ocr-region-indices');
+    if (raw === null) return ocr;
+    let indices;
+    try { indices = JSON.parse(raw); } catch { indices = []; }
+    const regions = Array.isArray(indices) ? indices.filter(Number.isInteger)
+      .map(index => ocr.paddleRegions?.[index]).filter(region => valid(region?.box)) : [];
+    const within = hit => valid(hit.box) && regions.some(region => sameInk(hit.box, region.box));
+    const rows = values => (values || []).filter(row => {
+      const glyphs = (row.glyphs || []).filter(g => valid(g.box));
+      return glyphs.length && within({box: union(glyphs.map(g => g.box))});
+    });
+    return {...ocr, paddleRegions: regions, lines: rows(ocr.lines),
+      alternativeLines: rows(ocr.alternativeLines), refinedLines: rows(ocr.refinedLines),
+      validationLines: rows(ocr.validationLines), pixelCorrections: (ocr.pixelCorrections || []).filter(within)};
+  }
+
   function preservesPromptSpelling(ocr, original, corrected) {
     // เด็ด is valid in "Prompt เด็ด". OCR may omit เ, but replacing
     // the phrase with เด็ก changes its meaning rather than fixing spelling.
@@ -792,7 +809,8 @@
     for(const li of panel.querySelectorAll('li')){
       const wrong=li.querySelector('mark')?.textContent.trim()||'';
       const replacement=li.textContent.split('→')[1]?.trim()||'';
-      if(wrong.includes('+')||replacement.includes('+')||differsOnlyByThaiTone(wrong,replacement)&&clearPairs.get(wrong)!==replacement&&!paddleRegionMatch(ocr,wrong)||poster&&wrong==='/ป'&&replacement==='AI'||
+      const candidateOcr = scopeCorrection(ocr, li);
+      if(wrong.includes('+')||replacement.includes('+')||differsOnlyByThaiTone(wrong,replacement)&&clearPairs.get(wrong)!==replacement&&!paddleRegionMatch(candidateOcr,wrong)||poster&&wrong==='/ป'&&replacement==='AI'||
         wrong==='ใบแจ้งหนี'&&ocr?.confirmed?.includes('ใบแจ้งหนี้'))li.remove();
       // "โอนเงินผ่านบัญชี" is a valid payment instruction. A model's
       // synonym replacement for ผ่าน must not become a spelling mark.
@@ -813,22 +831,25 @@
         existing.add(wrong);
       }
     }
+    const alternativeKey = (word, li) => JSON.stringify([word, li.getAttribute('data-ocr-region-indices')]);
     const alternatives=new Map();
     for(const li of panel.querySelectorAll('li')){
       const original=li.querySelector('mark')?.textContent.trim().normalize('NFC');
       const at=li.textContent.indexOf('→');
       if(!original||at<0)continue;
-      if(!alternatives.has(original))alternatives.set(original,new Set());
-      alternatives.get(original).add(li.textContent.slice(at+1).trim().normalize('NFC'));
+      if(!alternatives.has(alternativeKey(original, li)))alternatives.set(alternativeKey(original, li),new Set());
+      alternatives.get(alternativeKey(original, li)).add(li.textContent.slice(at+1).trim().normalize('NFC'));
     }
+    const fullOcr = ocr;
     const seen=new Set();let located=0,verifiedCount=0,unlocated=0;
     for(const li of panel.querySelectorAll('li')){
       const mark=li.querySelector('mark');
       if(!mark){unlocated++;continue;}
+      const ocr = scopeCorrection(fullOcr, li);
       const original=mark.textContent.trim(),all=li.textContent;
       const arrow=all.indexOf('→'),corrected=arrow<0?'':all.slice(arrow+1).trim();
       if (preservesPromptSpelling(ocr, original, corrected)) {li.remove();continue;}
-      const key=JSON.stringify([original,corrected]);
+      const key=JSON.stringify([original,corrected,li.getAttribute('data-ocr-region-indices')]);
       if(seen.has(key)){li.remove();continue;}seen.add(key);
       if(original.normalize('NFC')===corrected.normalize('NFC')){li.remove();continue;}
       // OCR cannot reliably distinguish I, l and 1 in short Latin labels.
@@ -838,7 +859,7 @@
         li.remove();
         continue;
       }
-      const conflicting=alternatives.get(original.normalize('NFC'))?.size>1;
+      const conflicting=alternatives.get(alternativeKey(original.normalize('NFC'), li))?.size>1;
       const exactHits=corrected&&ocr&&!conflicting?locate(ocr.lines,original,true):[];
       const proof=ocr?.pixelCorrections?.find(p=>p.pixelVerified&&p.wrong===original&&p.correct===corrected);
       const matches=proof?[proof]:exactHits.length?exactHits:[];

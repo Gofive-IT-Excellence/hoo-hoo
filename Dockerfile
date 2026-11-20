@@ -7,7 +7,7 @@ RUN pip install -r requirements.txt
 COPY ocr-service/ .
 RUN python bundle_models.py && rm -rf /root/.paddlex /root/.cache
 WORKDIR /app
-COPY index.html styles.css script.js welcome.js welcome.css compare-browser.js ocr-word-locator.js ocr-word-locator-v2.js /app/site/
+COPY index.html styles.css script.js welcome.js welcome.css compare-browser.js image-proofreader.js ocr-word-locator.js ocr-word-locator-v2.js /app/site/
 COPY assets /app/site/assets
 COPY vendor /app/site/vendor
 COPY ocr-service/nginx.conf /etc/nginx/nginx.conf

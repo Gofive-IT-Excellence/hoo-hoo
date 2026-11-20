@@ -543,26 +543,33 @@ async function sendToN8N() {
          : OCR_ENDPOINT;
 
 setProgress(browserOcr ? "กำลังส่งข้อความและไฟล์ต้นฉบับไปตรวจ" : "กำลังส่งไฟล์ต้นฉบับไปตรวจ");
-    const response = await fetch(endpoint, {
-      method: "POST",
-      body: form,
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(paddleOcr ? 480_000 : 120_000)]),
-    });
-
-    if (!response.ok) throw new Error(`บริการตรวจเอกสารตอบกลับ HTTP ${response.status}`);
-    const responseText = await response.text();
     let json;
+    if (paddleOcr && effectiveMode === 'single' && window.HooHooImageAudit) {
+      json = await HooHooImageAudit.run(fileA, paddleOcr, {
+        signal: controller.signal,
+        onProgress: ({checked, total}) => setProgress('ตรวจจากบริบทแล้ว ' + checked + ' / ' + total + ' บรรทัด'),
+      });
+    } else {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        body: form,
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(paddleOcr ? 480_000 : 120_000)]),
+      });
 
-    try {
-      json = responseText ? JSON.parse(responseText) : {};
-    } catch (parseError) {
-      throw new Error(
-        responseText
-          ? `n8n ตอบกลับไม่ใช่ JSON: ${responseText.slice(0, 500)}`
-          : "n8n ตอบกลับว่างเปล่า"
-      );
+      if (!response.ok) throw new Error(`บริการตรวจเอกสารตอบกลับ HTTP ${response.status}`);
+      const responseText = await response.text();
+
+      try {
+        json = responseText ? JSON.parse(responseText) : {};
+      } catch (parseError) {
+        throw new Error(
+          responseText
+            ? `n8n ตอบกลับไม่ใช่ JSON: ${responseText.slice(0, 500)}`
+            : "n8n ตอบกลับว่างเปล่า"
+        );
+      }
+
     }
-
 
     if (!isCurrentRequest()) return;
     const html = Array.isArray(json) ? json[0]?.html : json?.html;

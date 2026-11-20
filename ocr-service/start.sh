@@ -1,7 +1,7 @@
 #!/bin/bash
 set -eu
 cd /app/ocr-service
-gunicorn --bind 127.0.0.1:5055 --workers 1 --threads 1 --timeout 180 --access-logfile - --error-logfile - server:app &
+gunicorn --bind 127.0.0.1:5055 --workers 1 --threads 2 --timeout 180 --access-logfile - --error-logfile - server:app &
 ocr_pid=$!
 nginx -g 'daemon off;' &
 web_pid=$!

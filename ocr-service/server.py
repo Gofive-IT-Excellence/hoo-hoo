@@ -7,15 +7,39 @@ import tempfile
 import os
 import traceback
 import io
+import threading
+from proofreading import configured, proofread, validate_lines
 
 app = Flask(__name__)
 
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
 ocr = create_ocr()
+ocr_lock = threading.Lock()
 
 @app.get("/health")
 def health():
     return jsonify({"status": "ok", "engine": "paddleocr", "language": "th"})
+
+
+@app.get("/proofread/health")
+def proofreading_health():
+    return jsonify({"configured": configured(), "engine": "contextual-line-audit"})
+
+
+@app.post("/proofread")
+def run_proofreading():
+    if not configured():
+        return jsonify({"error": "Proofreading model is not configured"}), 503
+    data = request.get_json(silent=True) or {}
+    try:
+        lines = validate_lines(data.get("lines"))
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    try:
+        return jsonify(proofread(lines))
+    except RuntimeError:
+        app.logger.warning("Contextual proofreading request failed")
+        return jsonify({"error": "Proofreading service did not complete the audit"}), 502
 
 
 MAX_PDF_PAGES = 50
@@ -87,7 +111,8 @@ def run_image_ocr(image_bytes):
             f.write(image_bytes)
             image_path = f.name
 
-        return extract_words(ocr.predict(image_path, return_word_box=True))
+        with ocr_lock:
+            return extract_words(ocr.predict(image_path, return_word_box=True))
     finally:
         if image_path and os.path.exists(image_path):
             os.remove(image_path)
@@ -116,10 +141,11 @@ def run_pdf_ocr(pdf_bytes):
                 image.save(f, format="PNG")
                 image_path = f.name
 
-            page_words = extract_words(
-                ocr.predict(image_path, return_word_box=True),
-                page_number=page_index + 1
-            )
+            with ocr_lock:
+                page_words = extract_words(
+                    ocr.predict(image_path, return_word_box=True),
+                    page_number=page_index + 1
+                )
             page_text = " ".join(word["text"] for word in page_words)
 
             pages.append({

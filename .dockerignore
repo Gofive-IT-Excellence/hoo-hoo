@@ -4,3 +4,7 @@ outputs
 **/__pycache__
 **/*.pyc
 .hoo*
+
+node_modules
+.env
+.env.*

@@ -20,14 +20,13 @@ The response includes text and words with confidence, page, x/y/w/h and four-poi
 PaddleOCR regions may be entire lines rather than individual words.
 GET /ocr/health reports readiness after model initialization.
 
-The image-check mode calls /ocr on the same origin and sends PaddleOCR regions
-in the existing browserOCR field to n8n. Browser OCR supplies character positions for word-level strike marks. When
-needed, PaddleOCR character bounds come from recognizer CTC alignment within
+Image mode calls /ocr on the same origin, then /proofread for contextual spelling.
+Browser OCR supplies an independent character reading for checking apparent OCR
+errors. PaddleOCR character bounds come from recognizer CTC alignment inside
 detection polygons. These bounds are approximate; a full-line box is never used
-as a substitute for a missing word box. If PaddleOCR is unavailable, browser
-OCR supplies the workflow payload. The localhost local-ocr=1 test link uses the
-browser spelling fallback, while the normal image-check flow sends to n8n.
-The spelling model remains in the existing workflow.
+as a substitute for a missing word box. When PaddleOCR is unavailable, the legacy
+n8n image path remains a fallback. Text and comparison modes retain their existing
+services. The localhost local-ocr=1 link is only a dictionary preview.
 
 ## Validation
 
@@ -42,3 +41,26 @@ The deployment image runs the same configuration but bundles downloaded models.
 
 The PaddleOCR container check workflow builds the Linux image and checks startup,
 static assets and real OCR inference with networking disabled at runtime.
+
+## Contextual proofreading of new work
+
+Image mode now sends literal PaddleOCR regions to POST /proofread in batches of
+at most six. The gateway audits spelling from context, independently of the
+frontend typo dictionary. Each response must account for every input region,
+including correct text. Missing or invalid regions are retried once in smaller
+batches. Incomplete coverage remains visibly incomplete. Corrections retain their
+source region IDs and use real OCR character boxes; identical text elsewhere is
+not automatically marked.
+
+Set the runtime environment variable PROOFREAD_API_KEY in Coolify using the same
+LLM gateway credential already used by the n8n workflow. Never add it to a build
+argument, the frontend, this repository, or an image layer. Redeploy after saving.
+Defaults: PROOFREAD_API_URL=https://llm-gateway.tks.co.th/v1/chat/completions,
+PROOFREAD_MODEL=DeepSeek-V4-Flash-0731. These two settings are optional.
+GET /proofread/health exposes only whether the key is configured, never the key.
+Without the runtime key the model endpoint returns 503; it does not claim a clean
+result. PaddleOCR and the service health endpoint remain independent of model
+configuration. The spelling gateway receives OCR text; user images stay at /ocr.
+
+The model may still miss typos or be misled by OCR errors. The synthetic benchmark
+is an integration check, not a guarantee for every document, font or domain.
