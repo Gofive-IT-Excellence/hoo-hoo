@@ -140,3 +140,51 @@ test('genuinely misspelled connective ไห้ can still be corrected to ให
   assert.equal(output.reviewCount, 1);
   assert.equal(output.located, 1);
 });
+
+function intersects(a,b,padding=0) {
+  return a[0] < b[2]+padding && a[2] > b[0]-padding && a[1] < b[3]+padding && a[3] > b[1]-padding;
+}
+
+test('nearby correction labels avoid both printed lines and each other', () => {
+  const printed = [[90,30,230,50],[90,60,230,80],[90,90,230,110]];
+  const occupied = [];
+  for (const anchor of [[100,60,130,80],[135,60,165,80],[170,60,200,80]]) {
+    const box = locator.chooseLabelBox(anchor,80,14,[320,200],printed,occupied);
+    assert.ok(box, 'blank margins must remain available');
+    assert.ok(printed.every(other => !intersects(box,other,2)));
+    assert.ok(occupied.every(other => !intersects(box,other,4)));
+    occupied.push(box);
+  }
+});
+
+test('dense text and narrow viewports fall back instead of accepting overlaps', () => {
+  assert.equal(locator.chooseLabelBox([100,60,130,80],80,14,[320,200],[[0,0,320,200]],[]),null);
+  assert.equal(locator.chooseLabelBox([5,20,25,40],80,14,[60,100],[],[]),null);
+});
+
+test('runtime layout preserves strike positions and keeps overflow labels stable after resize', () => {
+  const report = {total: 1, checked: 1, unchecked: [],
+    corrections: [{wrong: 'พนักงน', correct: 'พนักงาน', indices: [0]}]};
+  const output = locator.reanchor(audit.render(report, 'test.png').html,
+    {width: 500, height: 200, lines: [], paddleRegions: [region('พนักงนใหม่',10)]});
+  const doc = new DOMParser().parseFromString(output.html,'text/html');
+  const wrapper = doc.querySelector('.wrapper'), image = wrapper.querySelector('img');
+  wrapper.dataset.ocrTextBoxes = JSON.stringify([[0,0,1000,1000]]);
+  let imageBox = {width:300,height:120}; image.getBoundingClientRect = () => imageBox;
+  const label = wrapper.querySelector('[data-word-box]');
+  label.getBoundingClientRect = () => ({width:100,height:16});
+  const strike = wrapper.querySelector('.review-spelling-mark');
+  const originalPosition = [strike.style.left,strike.style.top,strike.style.width];
+  locator.layoutCorrectionLabels(doc);
+  assert.ok(label.closest('.correction-label-overflow'));
+  assert.equal(label.style.position,'static');
+  imageBox = {width:150,height:60}; locator.layoutCorrectionLabels(doc);
+  assert.equal(doc.querySelectorAll('.correction-label-overflow').length,1);
+  assert.equal(doc.querySelectorAll('[data-word-box]').length,1);
+  assert.deepEqual([strike.style.left,strike.style.top,strike.style.width],originalPosition);
+  wrapper.dataset.ocrTextBoxes = '[]';imageBox={width:500,height:200};
+  locator.layoutCorrectionLabels(doc);
+  assert.equal(doc.querySelectorAll('.correction-label-overflow').length,0);
+  assert.equal(label.parentElement,wrapper);
+  assert.equal(label.style.transform,'none');
+});
