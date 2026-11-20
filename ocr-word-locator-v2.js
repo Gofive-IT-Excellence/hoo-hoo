@@ -173,6 +173,16 @@
       validationLines: rows(ocr.validationLines), pixelCorrections: (ocr.pixelCorrections || []).filter(within)};
   }
 
+  const validFunctionWords = new Set('ที่ และ หรือ ซึ่ง ใน ของ ให้ ได้ เป็น จะ แต่ กับ จาก โดย เมื่อ นั้น นี้ ละ ล่ะ นะ น่ะ คะ ค่ะ ครับ'.split(' '));
+  function changesValidFunctionWord(wrong, correct) {
+    if (wrong === correct) return false;
+    if (validFunctionWords.has(wrong)) return true;
+    let start = 0, endWrong = wrong.length, endCorrect = correct.length;
+    while (start < Math.min(endWrong, endCorrect) && wrong[start] === correct[start]) start++;
+    while (endWrong > start && endCorrect > start && wrong[endWrong - 1] === correct[endCorrect - 1]) {endWrong--; endCorrect--;}
+    return validFunctionWords.has(wrong.slice(start, endWrong));
+  }
+
   function preservesPromptSpelling(ocr, original, corrected) {
     // เด็ด is valid in "Prompt เด็ด". OCR may omit เ, but replacing
     // the phrase with เด็ก changes its meaning rather than fixing spelling.
@@ -848,7 +858,7 @@
       const ocr = scopeCorrection(fullOcr, li);
       const original=mark.textContent.trim(),all=li.textContent;
       const arrow=all.indexOf('→'),corrected=arrow<0?'':all.slice(arrow+1).trim();
-      if (preservesPromptSpelling(ocr, original, corrected)) {li.remove();continue;}
+      if (changesValidFunctionWord(original, corrected) || preservesPromptSpelling(ocr, original, corrected)) {li.remove();continue;}
       const key=JSON.stringify([original,corrected,li.getAttribute('data-ocr-region-indices')]);
       if(seen.has(key)){li.remove();continue;}seen.add(key);
       if(original.normalize('NFC')===corrected.normalize('NFC')){li.remove();continue;}

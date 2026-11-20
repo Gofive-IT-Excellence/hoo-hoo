@@ -120,3 +120,23 @@ test('benchmark typos are not supplied by the known-typo dictionary', () => {
     assert.equal(locator.canMark(row.wrong, row.correct, row.text), false, row.wrong);
   }
 });
+
+test('correct Thai connective ที่ is preserved, even when a model proposes ล่ะ', () => {
+  const text = 'ข้อมูลส่วนบุคคลที่เก็บรวบรวม';
+  for (const c of [{wrong: 'ที่', correct: 'ล่ะ'},
+                   {wrong: text, correct: 'ข้อมูลส่วนบุคคลล่ะเก็บรวบรวม'}]) {
+    const report = {total: 1, checked: 1, unchecked: [], corrections: [{...c, indices: [0]}]};
+    const output = locator.reanchor(audit.render(report, 'test.png').html,
+      {width: 500, height: 200, lines: [], paddleRegions: [region(text, 10)]});
+    assert.equal(output.reviewCount, 0);
+    assert.equal(output.located, 0);
+  }
+});
+
+test('genuinely misspelled connective ไห้ can still be corrected to ให้', () => {
+  const report = {total: 1, checked: 1, unchecked: [], corrections: [{wrong: 'ไห้', correct: 'ให้', indices: [0]}]};
+  const output = locator.reanchor(audit.render(report, 'test.png').html,
+    {width: 500, height: 200, lines: [], paddleRegions: [region('ไห้ข้อมูล', 10)]});
+  assert.equal(output.reviewCount, 1);
+  assert.equal(output.located, 1);
+});

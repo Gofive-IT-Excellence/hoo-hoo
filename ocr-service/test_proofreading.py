@@ -23,6 +23,22 @@ class ProofreadingTests(unittest.TestCase):
         self.assertEqual(validate_result({'lines': [{'id': 3, 'corrections': []}]},
                                          [{'id': 3, 'text': 'ข้อความถูก'}])['unchecked'], [])
 
+    def test_correct_function_words_are_not_replaced(self):
+        for wrong, correct, text in [
+            ('ที่', 'ล่ะ', 'ข้อมูลส่วนบุคคลที่เก็บรวบรวม'),
+            ('ข้อมูลที่เก็บ', 'ข้อมูลล่ะเก็บ', 'ข้อมูลที่เก็บ'),
+            ('และ', 'หรือ', 'ข้อมูลและเอกสาร'),
+        ]:
+            result = validate_result({'lines': [{'id': 0, 'corrections': [
+                {'wrong': wrong, 'correct': correct}]}]}, [{'id': 0, 'text': text}])
+            self.assertEqual(result['lines'][0]['corrections'], [])
+            self.assertEqual(result['unchecked'], [])
+
+    def test_real_spelling_error_in_function_word_is_retained(self):
+        result = validate_result({'lines': [{'id': 0, 'corrections': [
+            {'wrong': 'ไห้', 'correct': 'ให้'}]}]}, [{'id': 0, 'text': 'ไห้ข้อมูล'}])
+        self.assertEqual(result['lines'][0]['corrections'], [{'wrong': 'ไห้', 'correct': 'ให้'}])
+
     def test_invalid_and_oversized_requests(self):
         for rows in [[], [{'id': True, 'text': 'ข้อมูล'}],
                      [{'id': 0, 'text': 'ก' * 10001}],
