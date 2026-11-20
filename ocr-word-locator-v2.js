@@ -841,6 +841,24 @@
         existing.add(wrong);
       }
     }
+    // Different OCR readings can propose the same replacement for the same ink.
+    // Deduplicate by the real word location, never by replacement text alone.
+    const positionedCorrections = [];
+    for (const li of panel.querySelectorAll('li')) {
+      const wrong = li.querySelector('mark')?.textContent.trim();
+      const correct = li.querySelector('b')?.textContent.trim().normalize('NFC');
+      if (!wrong || !correct) continue;
+      const source = scopeCorrection(ocr, li);
+      const hits = locate(source.lines || [], wrong, true);
+      const match = hits.length === 1 ? hits[0] : locateBest(source, wrong);
+      if (!valid(match.box)) continue;
+      const duplicate = positionedCorrections.find(entry => entry.correct === correct && sameInk(entry.box, match.box));
+      const score = Math.abs(wrong.length - correct.length);
+      if (!duplicate) positionedCorrections.push({li, correct, box: match.box, score});
+      else if (score < duplicate.score) {
+        duplicate.li.remove();Object.assign(duplicate, {li, box: match.box, score});
+      } else li.remove();
+    }
     const alternativeKey = (word, li) => JSON.stringify([word, li.getAttribute('data-ocr-region-indices')]);
     const alternatives=new Map();
     for(const li of panel.querySelectorAll('li')){

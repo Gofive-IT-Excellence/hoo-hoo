@@ -140,3 +140,35 @@ test('genuinely misspelled connective ไห้ can still be corrected to ให
   assert.equal(output.reviewCount, 1);
   assert.equal(output.located, 1);
 });
+
+test('สินเชื่อ appears once when two OCR readings refer to the same printed word', () => {
+  const primaryText = 'ประกันสนเชื่อเช่าซื้อ';
+  const paddle = region('ประกันสนเซีือเช่าซื้อ',10);
+  const primary = region(primaryText,10);
+  const report = {total: 1, checked: 1, unchecked: [], corrections: [
+    {wrong: 'สนเชื่อ', correct: 'สินเชื่อ', indices: [0]},
+    {wrong: 'สนเซีือ', correct: 'สินเชื่อ', indices: [0]},
+  ]};
+  const output = locator.reanchor(audit.render(report,'test.png').html, {
+    width: 500, height: 200, paddleRegions: [paddle],
+    lines: [{text: primaryText, confidence: 95, glyphs: primary.characters}],
+  });
+  const doc = new DOMParser().parseFromString(output.html,'text/html');
+  assert.equal(output.reviewCount,1);
+  assert.equal(output.located,1);
+  assert.equal(doc.querySelectorAll('.verified-spelling-correction,.review-spelling-correction').length,1);
+  assert.equal(doc.querySelectorAll('.correction-panel li').length,1);
+});
+
+test('identical replacement words at different source positions are retained', () => {
+  const text = 'ประกันสนเชื่อเช่าซื้อ';
+  const report = {total: 2, checked: 2, unchecked: [], corrections: [
+    {wrong: 'สนเชื่อ', correct: 'สินเชื่อ', indices: [0]},
+    {wrong: 'สนเชื่อ', correct: 'สินเชื่อ', indices: [1]},
+  ]};
+  const output = locator.reanchor(audit.render(report,'test.png').html, {
+    width: 500, height: 200, lines: [], paddleRegions: [region(text,10),region(text,100)],
+  });
+  assert.equal(output.reviewCount,2);
+  assert.equal(output.located,2);
+});
