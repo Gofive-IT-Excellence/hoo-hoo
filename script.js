@@ -373,6 +373,41 @@ function toBrowserOcrPayload(ocr) {
   return {version:1, engine:'tesseract-browser-7', width:ocr.width, height:ocr.height, regions};
 }
 
+async function readPaddleImage(file, parentSignal) {
+  const signal = AbortSignal.any([parentSignal, AbortSignal.timeout(180_000)]);
+  const form = new FormData();
+  form.append("fileA", file);
+  const response = await fetch("/ocr", {method: "POST", body: form, signal});
+  if (!response.ok) throw new Error("PaddleOCR HTTP " + response.status);
+  const result = await response.json();
+  if (!Number.isInteger(result.width) || !Number.isInteger(result.height) ||
+      result.width < 1 || result.height < 1 || !Array.isArray(result.words)) {
+    throw new Error("PaddleOCR returned invalid image coordinates");
+  }
+  const regions = result.words.filter(word =>
+    typeof word.text === "string" && word.text.trim() &&
+    Array.isArray(word.box) && word.box.length === 4 &&
+    word.box.every(point => Array.isArray(point) && point.length === 2 && point.every(Number.isFinite))
+  ).map(word => {
+    const xs = word.box.map(point => point[0]);
+    const ys = word.box.map(point => point[1]);
+    const normalize = (value, size) => Math.round(Math.max(0, Math.min(1000, value / size * 1000)));
+    return {
+      text: word.text,
+      bbox: [normalize(Math.min(...xs), result.width), normalize(Math.min(...ys), result.height),
+        normalize(Math.max(...xs), result.width), normalize(Math.max(...ys), result.height)],
+      words: [],
+      characters: (word.characters || []).map(character => ({
+        text:character.text, start:character.start, end:character.end,
+        box:character.box.map(point => [
+          normalize(point[0], result.width), normalize(point[1], result.height)])
+      })),
+    };
+  }).filter(region => region.bbox[2] > region.bbox[0] && region.bbox[3] > region.bbox[1]);
+  if (!regions.length) throw new Error("PaddleOCR found no text");
+  return {version:1, engine:"paddleocr-th", width:result.width, height:result.height, regions};
+}
+
 // Location OCR is optional: the server also receives the original image.
 async function readImageLocations(file, parentSignal) {
   const signal = AbortSignal.any([parentSignal, AbortSignal.timeout(35_000)]);
@@ -389,7 +424,7 @@ async function readImageLocations(file, parentSignal) {
   }
 }
 
-async function renderLocalImageResult(file, ocr, isCurrentRequest) {
+async function renderLocalImageResult(file, ocr, isCurrentRequest, incomplete = false) {
   const imageUrl = await new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
@@ -400,7 +435,14 @@ async function renderLocalImageResult(file, ocr, isCurrentRequest) {
   const result = HooHooWordLocator.renderLocal(imageUrl, ocr);
   resultBox.classList.remove("is-loading");
   renderResultHtml(result.html);
-  statusText.textContent = "ผลตรวจเบื้องต้น";
+  statusText.textContent = incomplete
+    ? "บริการตรวจคำผิดไม่สำเร็จ — แสดงผลตรวจเบื้องต้น"
+    : "ผลตรวจเบื้องต้น";
+  if (incomplete && result.reviewCount === 0) {
+    const message = document.createElement("p");
+    message.textContent = "ยังตรวจคำผิดไม่สำเร็จ ผล 0 รายการนี้ยังยืนยันว่าข้อความถูกต้องไม่ได้ กรุณาลองส่งตรวจอีกครั้ง";
+    resultBox.prepend(message);
+  }
 }
 
 let requestBusy = false;
@@ -442,6 +484,7 @@ async function sendToN8N() {
   statusText.textContent = "กำลังประมวลผล";
 
   let browserLocator = null;
+  let paddleOcr = null;
   try {
     if (mode === 'compare') {
       const result = await HooHooCompare.compare(fileA, fileB, message => {
@@ -465,9 +508,15 @@ async function sendToN8N() {
     }
 
     if (effectiveMode === 'single' && /^image\//.test(fileA.type)) {
-      statusText.textContent = 'กำลังอ่านตำแหน่งคำในเบราว์เซอร์';
-      try { browserLocator = await readImageLocations(fileA, controller.signal); }
-      catch (error) { console.warn('Browser OCR unavailable', error); }
+      statusText.textContent = 'กำลังอ่านข้อความและตำแหน่งจากภาพ';
+      const readings = await Promise.allSettled([
+        readPaddleImage(fileA, controller.signal),
+        readImageLocations(fileA, controller.signal),
+      ]);
+      if (readings[0].status === "fulfilled") paddleOcr = readings[0].value;
+      else console.warn("PaddleOCR unavailable", readings[0].reason);
+      if (readings[1].status === "fulfilled") browserLocator = readings[1].value;
+      else console.warn("Browser OCR unavailable", readings[1].reason);
     }
     if (!isCurrentRequest()) return;
     const localImagePreview = ["localhost", "127.0.0.1"].includes(location.hostname)
@@ -478,7 +527,7 @@ async function sendToN8N() {
       await renderLocalImageResult(fileA, browserLocator, isCurrentRequest);
       return;
     }
-    const browserOcr = toBrowserOcrPayload(browserLocator);
+    const browserOcr = paddleOcr || toBrowserOcrPayload(browserLocator);
 
     const form = new FormData();
     if (browserOcr) form.append('browserOCR', JSON.stringify(browserOcr));
@@ -497,7 +546,7 @@ setProgress(browserOcr ? "กำลังส่งข้อความและ
     const response = await fetch(endpoint, {
       method: "POST",
       body: form,
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(120_000)]),
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(paddleOcr ? 480_000 : 120_000)]),
     });
 
     if (!response.ok) throw new Error(`บริการตรวจเอกสารตอบกลับ HTTP ${response.status}`);
@@ -529,7 +578,23 @@ setProgress(browserOcr ? "กำลังส่งข้อความและ
       let noVerifiedLines = false;
       if (effectiveMode === 'single' && /^image\//.test(fileA.type)) {
         statusText.textContent = 'กำลังยืนยันตำแหน่งคำจากภาพจริง';
-        const checked = HooHooWordLocator.reanchor(html, browserLocator);
+        const imageLocations = browserLocator || {
+          width:paddleOcr?.width, height:paddleOcr?.height, lines:[]
+        };
+        if (paddleOcr) {
+          imageLocations.paddleRegions = paddleOcr.regions.map(region => ({
+            text:region.text,
+            characters:(region.characters || []).map(character => ({
+              start:character.start, end:character.end,
+              box:[Math.min(...character.box.map(p=>p[0])), Math.min(...character.box.map(p=>p[1])),
+                Math.max(...character.box.map(p=>p[0])), Math.max(...character.box.map(p=>p[1]))]
+                .map((value,index)=>value/1000*(index%2?imageLocations.height:imageLocations.width))
+            })),
+            box:region.bbox.map((value,index) =>
+              value / 1000 * (index % 2 ? imageLocations.height : imageLocations.width))
+          }));
+        }
+        const checked = HooHooWordLocator.reanchor(html, imageLocations);
         finalHtml = checked.html;
         needsReview = !browserOcr || checked.incompleteCoverage || checked.reviewCount > 0;
         noVerifiedLines = checked.incompleteCoverage && checked.checkedLines === 0;
@@ -579,7 +644,8 @@ ${JSON.stringify(json, null, 2)}
     resultBox.classList.remove("is-loading");
     if (browserLocator?.lines.length) {
       try {
-        await renderLocalImageResult(fileA, browserLocator, isCurrentRequest);
+        console.warn("Full proofreading failed", error);
+        await renderLocalImageResult(fileA, browserLocator, isCurrentRequest, true);
         return;
       } catch (fallbackError) {
         console.warn("Local spelling result unavailable", fallbackError);

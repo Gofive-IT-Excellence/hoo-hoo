@@ -4,22 +4,13 @@
   const valid=b=>Array.isArray(b)&&b.length===4&&b.every(Number.isFinite)&&b[2]>b[0]&&b[3]>b[1];
   const union=bs=>[Math.min(...bs.map(b=>b[0])),Math.min(...bs.map(b=>b[1])),Math.max(...bs.map(b=>b[2])),Math.max(...bs.map(b=>b[3]))];
   // Narrow spelling rules; never treat an arbitrary AI replacement as verified.
-  function preservesPromptSpelling(ocr, original, corrected) {
-    // เด็ด is valid in "Prompt เด็ด". OCR may omit เ, but replacing
-    // the phrase with เด็ก changes its meaning rather than fixing spelling.
-    if (!['เด็ด', 'ด็ด'].includes(original) || corrected !== 'เด็ก') return false;
-    const sources = [ocr?.lines, ocr?.validationLines, ocr?.paddleRegions];
-    return sources.some(rows => Array.isArray(rows) &&
-      /Prompt(?:เด็ด|ด็ด)/i.test(rows.map(row => row.text || '').join('').replace(/\s/g, '')));
-  }
-
   const clearPairs=new Map(Object.entries({'อนุญาติ':'อนุญาต','ประมวณผล':'ประมวลผล','บริสัท':'บริษัท','ข้อมุล':'ข้อมูล','ข้อตวาม':'ข้อความ','บันทก':'บันทึก','ลกษณะ':'ลักษณะ','กำนด':'กำหนด','กํานด':'กำหนด','หน่ยว':'หน่วย','รายล่ะเอียด':'รายละเอียด','ทังหมด':'ทั้งหมด','ปรากฎ':'ปรากฏ','สังเกตุ':'สังเกต','คำนวน':'คำนวณ','บอกล':'บอกลา','วิดีโด':'วิดีโอ','พรีเซนต':'พรีเซนต์','Goegle':'Google','วิดิทัศน์':'วีดิทัศน์','วิดีทัศน์':'วีดิทัศน์','วีดีทัศน์':'วีดิทัศน์','ประศบภัย':'ประสบภัย','ชวย':'ช่วย','ผู':'ผู้','ทวม':'ท่วม','ภากไต้':'ภาคใต้','ฝรัง':'ฝรั่ง','ได':'ได้','อยา':'อย่า','ประโยบ':'ประโยค','ทก':'ทุก','จรง':'จริง','จินตนากาน':'จินตนาการ','Banano':'Banana','เงน':'เงิน','คณ':'คุณ','สามารด':'สามารถ','สถานการณ':'สถานการณ์','รถยนต':'รถยนต์','ประกน':'ประกัน','ชอย':'ชอบ','อินโฟกราฟฟิก':'อินโฟกราฟิก','บ้าล':'บ้าน','ประหยด':'ประหยัด','ประหยับ':'ประหยัด','ประหยัม':'ประหยัด','ง่าน':'ง่าย'}));
   // Require nearby text where the OCR token can also occur in valid usage.
   const contextPairs = new Map([
+    // OCR can drop the existing tone mark in the longer phrase ส่วนบุคคลอื่น.
     ['ข้อมูร', {correct: 'ข้อมูล', before: /(?:^|แต่)$/, after: /^(?:ร[ั่]*ว|ของ|บริษัท|$)/}],
     ['ขอมูล', {correct: 'ข้อมูล', before: /(?:^|ถ้า|ต่ถ้า|แต่ถ้า)$/, after: /^บริษัท/}],
     ['ปองกัน', {correct: 'ป้องกัน', before: /(?:^|ร[ั่]*ว)$/, after: /^(?:ได้|ยาก|ข้อมูล|$)/}],
-    // OCR can drop the existing tone mark in the longer phrase ส่วนบุคคลอื่น.
     ['ได่', {correct: 'ได้', before: /ไม่$/, after: /^$/}],
     ['ทา', {correct: 'ทำ', before: /(?:ไหน|โหน|งาน)$/, after: /^ซ[้ํ]+[ำา]/}],
     ['แตละ', {correct: 'แต่ละ', before: /(?:^|ของ|ใน|ให้)$/, after: /^(?:ทีม|คน|วัน|กลุ่ม|รายการ|ครั้ง)/}],
@@ -147,6 +138,72 @@
       : 'max('+Math.max(0,y-gap)/ocr.height*100+'%, clamp(10.35px,'+(Number(labelSize)*1.15)+'cqw,18.4px))';
     wrapper.append(mark,label);
   }
+  function paddleRegionMatch(ocr, original) {
+    const normalize = text => String(text).normalize('NFC').replace(/\s/g, '');
+    const word = normalize(original);
+    if (!word) return null;
+    const regions = (ocr?.paddleRegions || []).filter(region =>
+      valid(region.box) && normalize(region.text).includes(word));
+    if (regions.length !== 1) return null;
+    const region = regions[0];
+    const start = region.text.indexOf(original);
+    const end = start + original.length;
+    const characters = (region.characters || []).filter(g => g.start < end && g.end > start);
+    const wordBox = start >= 0 && characters[0]?.start === start && characters.at(-1)?.end === end
+      ? union(characters.map(g => g.box).filter(valid)) : null;
+    return {...region, wordBox, start};
+  }
+
+  function preservesPromptSpelling(ocr, original, corrected) {
+    // เด็ด is valid in "Prompt เด็ด". OCR may omit เ, but replacing
+    // the phrase with เด็ก changes its meaning rather than fixing spelling.
+    if (!['เด็ด', 'ด็ด'].includes(original) || corrected !== 'เด็ก') return false;
+    const sources = [ocr?.lines, ocr?.validationLines, ocr?.paddleRegions];
+    return sources.some(rows => Array.isArray(rows) &&
+      /Prompt(?:เด็ด|ด็ด)/i.test(rows.map(row => row.text || '').join('').replace(/\s/g, '')));
+  }
+
+  function correctedReadingAtRegion(ocr, corrected, region) {
+    if (!region || !corrected) return false;
+    for (const row of [...(ocr.lines || []), ...(ocr.validationLines || [])]) {
+      if (row.confidence < 85) continue;
+      let start = row.text.indexOf(corrected);
+      while (start >= 0) {
+        const end = start + corrected.length;
+        const glyphs = row.glyphs.filter(g => g.start < end && g.end > start);
+        if (glyphs[0]?.start === start && glyphs.at(-1)?.end === end) {
+          const box = union(glyphs.map(g => g.box));
+          const target = valid(region.wordBox) ? region.wordBox : region.box;
+          if (sameInk(box, target)) return true;
+        }
+        start = row.text.indexOf(corrected, start + corrected.length);
+      }
+    }
+    return false;
+  }
+
+  function addPaddleReview(doc, wrapper, region, ocr, original, corrected, wordMatch) {
+    const wordLocated = valid(wordMatch?.box) && sameInk(wordMatch.box, region.box);
+    const placement = wordLocated ? wordMatch : valid(region.wordBox)
+      ? {box:region.wordBox, line:region.text} : null;
+    if (!placement) return null;
+    addOverlay(doc, wrapper, placement, ocr, original, corrected, false);
+    const label = wrapper.lastElementChild;
+    const mark = label.previousElementSibling;
+    const scope = 'ตำแหน่งระดับคำ';
+    const title = original + ' → ' + corrected + ' — ' + scope + ' โปรดตรวจทาน';
+    mark.classList.add('paddle-region-review');
+    label.classList.add('paddle-region-review');
+    mark.style.borderTopColor = '#dc2626';
+    mark.style.borderTopStyle = 'solid';
+    label.style.color = '#dc2626';
+    for (const element of [mark, label]) {
+      element.title = title;
+      element.setAttribute('aria-label', title);
+    }
+    return true;
+  }
+
   function strikeY(glyphs){
     if(!glyphs?.length)return null;
     // Use the median glyph center so tall Thai vowel boxes and descenders do
@@ -217,7 +274,12 @@
   }
   function locateBest(ocr,word){
     const primary=locate(ocr.lines,word);
-    return primary.box?primary:(ocr.pixelCorrections||[]).find(c=>c.wrong===word)||locate([...(ocr.refinedLines||[]),...(ocr.alternativeLines||[])],word);
+    const match = primary.box ? primary : (ocr.pixelCorrections||[]).find(c=>c.wrong===word) ||
+      locate([...(ocr.refinedLines||[]),...(ocr.alternativeLines||[])],word);
+    if (match.box) return match;
+    const region = paddleRegionMatch(ocr, word);
+    return valid(region?.wordBox) && matchesSpellingContext(word, region.text, region.start)
+      ? {box:region.wordBox, line:region.text, verification:'review'} : match;
   }
   function sameInk(a,b){
     const intersection=Math.max(0,Math.min(a[2],b[2])-Math.max(a[0],b[0]))*Math.max(0,Math.min(a[3],b[3])-Math.max(a[1],b[1]));
@@ -694,7 +756,7 @@
     const checkedLines = coverage ? Number(coverage[1]) : null;
     const incompleteCoverage = coverage !== null && checkedLines < Number(coverage[2]);
     if(!panel||!wrapper||!wrapper.querySelector('img'))throw Error('รูปแบบผลตรวจไม่รองรับการตรวจพิกัด');
-    doc.querySelectorAll('script,.ocr-fix-line,.ocr-fix-text,.verified-spelling-mark,.review-spelling-mark,.verified-spelling-correction,.review-spelling-correction').forEach(n=>n.remove());
+    doc.querySelectorAll('script,.ocr-fix-line,.ocr-fix-text,.verified-spelling-mark,.review-spelling-mark,.verified-spelling-correction,.review-spelling-correction,.paddle-region-review').forEach(n=>n.remove());
     let posterFree=null,poster=false;
     if(Array.isArray(ocr?.lines)){
       const rows=ocr.lines;poster=rows.some(r=>/capcut/i.test(r.text))&&
@@ -728,7 +790,7 @@
     for(const li of panel.querySelectorAll('li')){
       const wrong=li.querySelector('mark')?.textContent.trim()||'';
       const replacement=li.textContent.split('→')[1]?.trim()||'';
-      if(wrong.includes('+')||replacement.includes('+')||differsOnlyByThaiTone(wrong,replacement)&&clearPairs.get(wrong)!==replacement||poster&&wrong==='/ป'&&replacement==='AI'||
+      if(wrong.includes('+')||replacement.includes('+')||differsOnlyByThaiTone(wrong,replacement)&&clearPairs.get(wrong)!==replacement&&!paddleRegionMatch(ocr,wrong)||poster&&wrong==='/ป'&&replacement==='AI'||
         wrong==='ใบแจ้งหนี'&&ocr?.confirmed?.includes('ใบแจ้งหนี้'))li.remove();
       // "โอนเงินผ่านบัญชี" is a valid payment instruction. A model's
       // synonym replacement for ผ่าน must not become a spelling mark.
@@ -767,12 +829,34 @@
       const key=JSON.stringify([original,corrected]);
       if(seen.has(key)){li.remove();continue;}seen.add(key);
       if(original.normalize('NFC')===corrected.normalize('NFC')){li.remove();continue;}
+      // OCR cannot reliably distinguish I, l and 1 in short Latin labels.
+      const ambiguousLatin = text => text.replace(/[Il1]/g, '|');
+      if (/^[A-Za-z0-9]{1,4}$/.test(original) && /^[A-Za-z0-9]{1,4}$/.test(corrected) &&
+          ambiguousLatin(original) === ambiguousLatin(corrected)) {
+        li.remove();
+        continue;
+      }
       const conflicting=alternatives.get(original.normalize('NFC'))?.size>1;
       const exactHits=corrected&&ocr&&!conflicting?locate(ocr.lines,original,true):[];
       const proof=ocr?.pixelCorrections?.find(p=>p.pixelVerified&&p.wrong===original&&p.correct===corrected);
       const matches=proof?[proof]:exactHits.length?exactHits:[];
       const match=original==='ฟร!'&&posterFree?posterFree:
         corrected&&ocr&&!conflicting?locateBest(ocr,original):{reason:'unavailable'};
+      const paddleRegion = !conflicting ? paddleRegionMatch(ocr, original) : null;
+      if (!proof && correctedReadingAtRegion(ocr, corrected, paddleRegion)) {
+        li.remove();
+        continue;
+      }
+      const reliableWord = proof || matches.some(hit =>
+        canMark(original, corrected, hit.line) && checkedReading(ocr, original, hit) !== 'contradicted');
+      if (paddleRegion && !reliableWord) {
+        const wordLocated = addPaddleReview(doc, wrapper, paddleRegion, ocr, original, corrected, match);
+        const note = doc.createElement('span');
+        note.textContent = wordLocated ? ' — ตำแหน่งคำ โปรดตรวจทาน' : ' — ยังแยกตำแหน่งคำไม่ได้';
+        li.append(note);
+        if (wordLocated) located++; else unlocated++;
+        continue;
+      }
       if(!match.box&&!matches.length){
         const note=doc.createElement('span');note.textContent=match.reason==='ambiguous'?' — OCR พบหลายตำแหน่ง โปรดตรวจทาน':' — ยังยืนยันตำแหน่งไม่ได้';li.append(note);unlocated++;continue;
       }
@@ -797,7 +881,7 @@
       panel.prepend(warning);
     }
     const heading=panel.querySelector('h3');if(heading)heading.textContent='คำแนะนำที่ต้องตรวจทาน ('+count+')';
-    const status=panel.querySelector('.location-status');if(status)status.textContent='ขีดแดง '+verifiedCount+' จุด · ขีดส้ม '+(located-verifiedCount)+' จุด · ยังขีดไม่ได้ '+unlocated+' รายการ';
+    const status=panel.querySelector('.location-status');if(status)status.textContent='แสดงตำแหน่ง '+located+' จุด · ยืนยันด้วยกฎสะกด '+verifiedCount+' จุด · ยังระบุตำแหน่งไม่ได้ '+unlocated+' รายการ';
     const version=panel.querySelector('.audit-version');if(version)version.textContent='คงต้นฉบับ · strike-word-27';
     const banner=doc.createElement('p');
     banner.className='result-location-summary';

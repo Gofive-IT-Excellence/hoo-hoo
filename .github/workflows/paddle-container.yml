@@ -1,0 +1,43 @@
+name: PaddleOCR container check
+on:
+  push:
+    branches: [main]
+    paths: [Dockerfile, 'ocr-service/**', '.github/workflows/paddle-container.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build bundled OCR image
+        run: docker build -t hoo-hoo-paddle .
+      - name: Verify offline startup, website and OCR
+        run: |
+          docker run -d --name hoo-test --network none hoo-hoo-paddle
+          for attempt in $(seq 1 90); do
+            if docker exec hoo-test python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/ocr/health', timeout=5)"; then break; fi
+            sleep 2
+          done
+          docker exec -i hoo-test python <<'PYTEST'
+          import base64, io, json, urllib.request
+          from PIL import Image
+          root = 'http://127.0.0.1:8080'
+          health = json.load(urllib.request.urlopen(root + '/ocr/health', timeout=10))
+          assert health['engine'] == 'paddleocr', health
+          html = urllib.request.urlopen(root).read().decode()
+          assert '20261120-paddle-bundled' in html
+          buffer = io.BytesIO()
+          Image.new('RGB', (320, 160), 'white').save(buffer, format='PNG')
+          data = json.dumps({'base64': base64.b64encode(buffer.getvalue()).decode()}).encode()
+          req = urllib.request.Request(root + '/ocr', data=data, headers={'Content-Type': 'application/json'})
+          result = json.load(urllib.request.urlopen(req, timeout=180))
+          assert (result['width'], result['height']) == (320, 160), result
+          assert isinstance(result['words'], list)
+          print('Offline model initialization, website and actual OCR inference passed')
+          PYTEST
+      - name: Container logs
+        if: always()
+        run: docker logs hoo-test || true
