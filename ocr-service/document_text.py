@@ -2,6 +2,7 @@
 from pathlib import Path
 import io
 import zipfile
+import subprocess
 from xml.etree import ElementTree
 
 
@@ -21,7 +22,10 @@ def text_lines(data, filename, pdf_reader, image_reader):
         encoding = 'utf-16' if data.startswith((b'\xff\xfe', b'\xfe\xff')) else 'utf-8-sig'
         return data.decode(encoding).splitlines()
     if suffix == '.doc':
-        raise ValueError('กรุณาบันทึกไฟล์ .doc เป็น .docx หรือ PDF ก่อนส่งตรวจ')
+        result = subprocess.run(['antiword', '-m', 'UTF-8.txt', '-w', '0', '-'], input=data, capture_output=True, timeout=30)
+        if result.returncode:
+            raise ValueError('อ่านไฟล์ .doc ไม่สำเร็จ กรุณาบันทึกเป็น .docx หรือ PDF')
+        return result.stdout.decode('utf-8').splitlines()
     return [w['text'] for w in image_reader(data)]
 
 

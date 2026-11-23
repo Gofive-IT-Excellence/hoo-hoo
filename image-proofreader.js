@@ -133,13 +133,24 @@
   function localRequest(signal) {
     return async rows => {
       signal?.throwIfAborted();
-      const response = await fetch('/proofread', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({lines: rows.map(row => ({id: row.index, text: row.text}))}),
-        signal: AbortSignal.any([signal, AbortSignal.timeout(150_000)].filter(Boolean)),
-      });
-      if (!response.ok) throw Error('บริการตรวจคำผิด HTTP ' + response.status);
-      return response.json();
+      for (let attempt = 0; attempt < 4; attempt++) {
+        signal?.throwIfAborted();
+        const response = await fetch('/proofread', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({lines: rows.map(row => ({id: row.index, text: row.text}))}),
+          signal: AbortSignal.any([signal, AbortSignal.timeout(150_000)].filter(Boolean)),
+        });
+        if (response.status === 429 && attempt < 3) {
+          await new Promise((resolve, reject) => {
+            const abort = () => { clearTimeout(timer); reject(signal.reason); };
+            const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, 5000 * 2 ** attempt);
+            signal?.addEventListener('abort', abort, {once:true});
+          });
+          continue;
+        }
+        if (!response.ok) throw Error('บริการตรวจคำผิด HTTP ' + response.status);
+        return response.json();
+      }
     };
   }
 

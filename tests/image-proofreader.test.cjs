@@ -190,3 +190,35 @@ test('a genuinely missing tone mark remains eligible for correction', () => {
     [{...row('ไดเลย',0),index:0}]);
   assert.equal(parsed.corrections.length,1);
 });
+
+test('local model batches never overlap when one document has many regions', async () => {
+  let active = 0, peak = 0;
+  const result = await audit.audit({regions:Array.from({length:14}, (_,i)=>row('ข้อมูล '+i,i))}, async rows => {
+    peak = Math.max(peak, ++active);
+    await new Promise(resolve=>setImmediate(resolve));
+    active--;
+    return {lines:rows.map(row=>({id:row.index, corrections:[]}))};
+  });
+  assert.equal(peak, 1);
+  assert.equal(result.checked, 14);
+});
+
+test('document audits use only local extraction and proofreading and escape source HTML', async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+  global.fetch = async (url, options) => {
+    calls.push(url);
+    if (url === '/document/text') return {ok:true,json:async()=>({text:'ข้อมูล <script>bad()</script>',regions:[row('ข้อมูล <script>bad()</script>',0)]})};
+    assert.equal(url, '/proofread');
+    const {lines} = JSON.parse(options.body);
+    return {ok:true,status:200,json:async()=>({lines:lines.map(line=>({id:line.id,corrections:[]}))})};
+  };
+  try {
+    const result = await audit.runDocument(new File(['ข้อมูล'], 'test.txt'));
+    assert.deepEqual(calls, ['/document/text','/proofread']);
+    assert.equal(result.incomplete, false);
+    const doc = new DOMParser().parseFromString(result.html,'text/html');
+    assert.equal(doc.querySelectorAll('script').length,0);
+    assert.equal(doc.querySelector('pre').textContent,'ข้อมูล <script>bad()</script>');
+  } finally { global.fetch = originalFetch; }
+});

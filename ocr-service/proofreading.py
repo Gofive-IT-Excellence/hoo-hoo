@@ -71,6 +71,10 @@ def contains_complete_span(text, word):
     return False
 
 
+class ModelBusy(RuntimeError):
+    pass
+
+
 def configured():
     try:
         with LOCAL_OPENER.open("http://127.0.0.1:5056/health", timeout=2) as response:
@@ -153,13 +157,16 @@ def proofread(lines, *, opener=None):
     request = urllib.request.Request(LOCAL_URL, data=json.dumps(body).encode(), headers={
         "Content-Type": "application/json",
     })
-    # One generation at a time keeps CPU and memory bounded across concurrent uploads.
-    with MODEL_LOCK:
-        try:
-            with opener(request, timeout=120) as response:
-                data = json.load(response)
-        except (HTTPError, URLError, TimeoutError) as error:
-            raise RuntimeError("Local proofreading model request failed") from error
+    # Never occupy both web threads waiting for the same generation slot.
+    if not MODEL_LOCK.acquire(blocking=False):
+        raise ModelBusy("Local proofreading model is busy")
+    try:
+        with opener(request, timeout=120) as response:
+            data = json.load(response)
+    except (HTTPError, URLError, TimeoutError) as error:
+        raise RuntimeError("Local proofreading model request failed") from error
+    finally:
+        MODEL_LOCK.release()
     choices = data.get("choices") if isinstance(data, dict) else None
     if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
         raise RuntimeError("Local proofreading model returned no result")

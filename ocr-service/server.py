@@ -8,7 +8,7 @@ import os
 import traceback
 import io
 import threading
-from proofreading import configured, proofread, validate_lines, LOCAL_MODEL
+from proofreading import configured, proofread, validate_lines, LOCAL_MODEL, ModelBusy
 
 app = Flask(__name__)
 
@@ -37,6 +37,8 @@ def run_proofreading():
         return jsonify({"error": str(error)}), 400
     try:
         return jsonify(proofread(lines))
+    except ModelBusy:
+        return jsonify({"error": "บริการกำลังตรวจเอกสารอีกชุด กรุณารอสักครู่"}), 429, {"Retry-After": "5"}
     except RuntimeError:
         app.logger.warning("Contextual proofreading request failed")
         return jsonify({"error": "Proofreading service did not complete the audit"}), 502
