@@ -140,6 +140,15 @@
       : 'max('+Math.max(0,y-gap)/ocr.height*100+'%, clamp(10.35px,'+(Number(labelSize)*1.15)+'cqw,18.4px))';
     wrapper.append(mark,label);
   }
+  // Latin OCR tokens need complete letter boundaries too: Sourc is not
+  // a separate word inside Source. Keep CamelCase label boundaries usable.
+  function completeLatinSpan(text, start, end) {
+    const letter = ch => !!ch && /[A-Za-z]/.test(ch);
+    const camel = (a,b) => /[a-z]/.test(a || '') && /[A-Z]/.test(b || '');
+    return !(letter(text[start]) && letter(text[start-1]) && !camel(text[start-1],text[start])) &&
+      !(letter(text[end-1]) && letter(text[end]) && !camel(text[end-1],text[end]));
+  }
+
   function paddleRegionMatch(ocr, original) {
     const normalize = text => String(text).normalize('NFC').replace(/\s/g, '');
     const word = normalize(original);
@@ -152,7 +161,7 @@
         const end = start + original.length;
         // A following vowel/tone mark belongs to this glyph. Do not match
         // ได inside the already correct ได้ (or any equivalent partial word).
-        if (!/^[\p{M}]/u.test(region.text.slice(end))) matches.push({region, start, end});
+        if (!/^[\p{M}]/u.test(region.text.slice(end)) && completeLatinSpan(region.text,start,end)) matches.push({region, start, end});
         start = region.text.indexOf(original, start + Math.max(1, original.length));
       }
     }
@@ -237,7 +246,7 @@
       while (start >= 0) {
         const end = start + corrected.length;
         const glyphs = row.glyphs.filter(g => g.start < end && g.end > start);
-        if (glyphs[0]?.start === start && glyphs.at(-1)?.end === end) {
+        if (glyphs[0]?.start === start && glyphs.at(-1)?.end === end && completeLatinSpan(row.text,start,end)) {
           const box = union(glyphs.map(g => g.box));
           const target = valid(region.wordBox) ? region.wordBox : region.box;
           if (sameInk(box, target)) return true;
@@ -861,7 +870,8 @@
       if (wrong) for (const region of candidateOcr?.paddleRegions || []) {
         let start = region.text.indexOf(wrong);
         while (start >= 0) {
-          if (/^[\p{M}]/u.test(region.text.slice(start + wrong.length))) partialGlyph = true;
+          if (/^[\p{M}]/u.test(region.text.slice(start + wrong.length)) ||
+              !completeLatinSpan(region.text,start,start+wrong.length)) partialGlyph = true;
           else completeGlyph = true;
           start = region.text.indexOf(wrong, start + wrong.length);
         }
@@ -920,6 +930,11 @@
         else li.setAttribute('data-unresolved-word-span', 'true');
         continue;
       }
+      // Source and Code are valid technical words, not incomplete spellings.
+      // Also ignore case-only styling changes; neither is a spelling error.
+      if (/^(source|code)$/i.test(span.wrong) || span.wrong.toLowerCase() === span.correct.toLowerCase()) {
+        li.remove();continue;
+      }
       mark.textContent = span.wrong;bold.textContent = span.correct;
     }
     const alternativeKey = (word, li) => JSON.stringify([word, li.getAttribute('data-ocr-region-indices')]);
@@ -969,6 +984,19 @@
       const reliableWord = proof || matches.some(hit =>
         canMark(original, corrected, hit.line) && checkedReading(ocr, original, hit) !== 'contradicted');
       if (paddleRegion && !reliableWord) {
+        // A primary OCR box locates ink; it does not confirm that a small,
+        // tilted Latin label was transcribed correctly. Do not bypass the
+        // independent-reading check just because that box exists.
+        if (/^[A-Za-z]+$/.test(original) && /^[A-Za-z]+$/.test(corrected) &&
+            !canMark(original,corrected,paddleRegion.text)) {
+          const reading = checkedReading(ocr, original, {box:paddleRegion.wordBox || paddleRegion.box});
+          if (reading === 'contradicted') {li.remove();continue;}
+          if (reading !== 'agreed') {
+            const note = doc.createElement('span');
+            note.textContent = ' — ยังยืนยันคำอังกฤษจากการอ่านซ้ำไม่ได้ จึงไม่ขีดทับ';
+            li.append(note);unlocated++;continue;
+          }
+        }
         const wordLocated = addPaddleReview(doc, wrapper, paddleRegion, ocr, original, corrected, match);
         const note = doc.createElement('span');
         note.textContent = wordLocated ? ' — ตำแหน่งคำ โปรดตรวจทาน' : ' — ยังแยกตำแหน่งคำไม่ได้';

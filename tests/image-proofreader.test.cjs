@@ -280,3 +280,52 @@ test('an independent correct OCR reading suppresses an erroneous suggestion at t
   assert.equal(output.located,0);
   assert.equal(output.reviewCount,0);
 });
+
+
+test('correct Source Code is never shortened to Sourc or changed for case styling', () => {
+  for (const [wrong,correct,text] of [
+    ['Source','Sourc','Source Code'],
+    ['Source Code','Sourc Code','Source Code'],
+    ['Code','code','Source Code'],
+    ['Sourc','Source','Source Code'],
+    ['Sourc','Source','SourceCode'],
+  ]) {
+    const report = {total:1,checked:1,unchecked:[],corrections:[{wrong,correct,indices:[0]}]};
+    const output = locator.reanchor(audit.render(report,'test.png').html,
+      {width:500,height:200,lines:[],paddleRegions:[region(text,10)]});
+    assert.equal(output.reviewCount,0,wrong+' → '+correct);
+    assert.equal(output.located,0);
+  }
+});
+
+test('an unconfirmed Latin OCR reading stays in review without striking the image', () => {
+  const report = {total:1,checked:1,unchecked:[],corrections:[{wrong:'Sorce',correct:'Source',indices:[0]}]};
+  const output = locator.reanchor(audit.render(report,'test.png').html,
+    {width:500,height:200,lines:[],paddleRegions:[region('Sorce Code',10)]});
+  assert.equal(output.reviewCount,1);
+  assert.equal(output.located,0);
+  assert.equal(output.unlocated,1);
+});
+
+test('a genuine Latin typo confirmed at the same ink can still be marked', () => {
+  const text = 'Sorce Code', read = region(text,10);
+  const report = {total:1,checked:1,unchecked:[],corrections:[{wrong:'Sorce',correct:'Source',indices:[0]}]};
+  const output = locator.reanchor(audit.render(report,'test.png').html, {
+    width:500,height:200,paddleRegions:[read],lines:[],
+    validationLines:[{text,confidence:95,glyphs:read.characters}],
+  });
+  assert.equal(output.reviewCount,1);
+  assert.equal(output.located,1);
+});
+
+test('a correct English word read independently overrides a mistaken primary OCR token', () => {
+  const primary = region('Sorce Code',10), alternate = region('Source Code',10);
+  alternate.characters.slice(0,6).forEach((g,i)=>{g.box=[10+i*10,10,20+i*10,30];});
+  const report = {total:1,checked:1,unchecked:[],corrections:[{wrong:'Sorce',correct:'Source',indices:[0]}]};
+  const output = locator.reanchor(audit.render(report,'test.png').html, {
+    width:500,height:200,paddleRegions:[primary],lines:[],
+    validationLines:[{text:alternate.text,confidence:95,glyphs:alternate.characters}],
+  });
+  assert.equal(output.reviewCount,0);
+  assert.equal(output.located,0);
+});
