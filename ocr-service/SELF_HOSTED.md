@@ -28,5 +28,7 @@ inference using generated text and images, never customer documents.
 
 Model output is a spelling suggestion, not guaranteed truth. Existing guards
 preserve valid Thai function words, reject partial combining-mark matches and
-ignore whitespace-only edits. Large text rewrites remain unchecked. Evaluate
+ignore whitespace-only edits. Only one glyph-group edit or adjacent transposition is accepted per suggestion;
+larger rewrites remain unchecked. Genuine errors requiring more edits may be
+missed by this conservative filter. Evaluate
 new models on held-out errors and correct controls before deployment.

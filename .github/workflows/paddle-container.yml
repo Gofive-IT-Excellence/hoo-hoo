@@ -39,7 +39,7 @@ jobs:
           from PIL import Image, ImageDraw, ImageFont
           root = 'http://127.0.0.1:8080'
           health = json.load(urllib.request.urlopen(root + '/ocr/health', timeout=10))
-          assert health['engine'] == 'openthai-ocr-text', health
+          assert health['engine'] == 'openthai-ocr-text' and health['proofreading_ready'], health
           html = urllib.request.urlopen(root).read().decode()
           assert 'ocr-word-locator-v2.js?v=' in html
           script = urllib.request.urlopen(root + '/script.js').read().decode()
@@ -58,10 +58,16 @@ jobs:
           assert (result['width'], result['height']) == (320, 160), result
           assert result['words'], result
           assert any(word['characters'] for word in result['words']), result
-          data = json.dumps({'lines': [{'id': 7, 'text': 'โปรดตรวจสอบเอกสารก่อนส่ง'}]}).encode()
+          data = json.dumps({'lines': [{'id': 7, 'text': 'บริษัทเปิดรับสมัครพนักงนใหม่'}, {'id': 8, 'text': 'ได้ สินเชื่อ'}]}).encode()
           req = urllib.request.Request(root + '/proofread', data=data, headers={'Content-Type': 'application/json'})
           audit = json.load(urllib.request.urlopen(req, timeout=150))
-          assert audit['unchecked'] == [] and audit['lines'][0]['id'] == 7, audit
+          assert audit['unchecked'] == [], audit
+          by_id = {line['id']: line for line in audit['lines']}
+          repaired = 'บริษัทเปิดรับสมัครพนักงนใหม่'
+          for correction in by_id[7]['corrections']:
+              repaired = repaired.replace(correction['wrong'], correction['correct'], 1)
+          assert repaired == 'บริษัทเปิดรับสมัครพนักงานใหม่', audit
+          assert by_id[8]['corrections'] == [], audit
           print('Offline OCR and local language model inference passed')
           PYTEST
       - name: Container logs

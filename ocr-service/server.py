@@ -18,7 +18,9 @@ ocr_lock = threading.Lock()
 
 @app.get("/health")
 def health():
-    return jsonify({"status": "ok", "engine": "openthai-ocr-text", "version": "2.1.4", "language": "th"})
+    ready = configured()
+    return jsonify({"status": "ok" if ready else "loading", "engine": "openthai-ocr-text",
+                    "version": "2.1.4", "language": "th", "proofreading_ready": ready}), 200 if ready else 503
 
 
 @app.get("/proofread/health")
