@@ -222,3 +222,61 @@ test('document audits use only local extraction and proofreading and escape sour
     assert.equal(doc.querySelector('pre').textContent,'ข้อมูล <script>bad()</script>');
   } finally { global.fetch = originalFetch; }
 });
+
+
+test('sentence corrections strike only the edited word, with exact character coordinates', () => {
+  const wrong = 'การให้บริการหลังการขาย การแจ้งเตือนกิจกรรมส่งเสิมการขาย';
+  const correct = 'การให้บริการหลังการขาย การแจ้งเตือนกิจกรรมส่งเสริมการขาย';
+  const report = {total:1,checked:1,unchecked:[],corrections:[{wrong,correct,indices:[0]}]};
+  const span = locator.correctionWordSpan(wrong,correct);
+  assert.deepEqual(span,{wrong:'เสิม',correct:'เสริม'});
+  const output = locator.reanchor(audit.render(report,'test.png').html,
+    {width:1000,height:200,lines:[],paddleRegions:[region(wrong,10)]});
+  assert.equal(output.located,1);
+  const doc = new DOMParser().parseFromString(output.html,'text/html');
+  const mark = doc.querySelector('.paddle-region-review');
+  const start = wrong.indexOf('เสิม');
+  assert.ok(Math.abs(parseFloat(mark.style.left)-(10+start*12)/10)<1e-8);
+  assert.equal(parseFloat(mark.style.width),'เสิม'.length*12/10);
+  assert.equal(doc.querySelector('.review-spelling-correction').textContent,'→ เสริม');
+  assert.equal(doc.querySelector('.correction-panel mark').textContent,'เสิม');
+});
+
+test('word spans retain complete Thai tones and missing vowels without neighbouring words', () => {
+  for (const [wrong,correct,expected] of [
+    ['บริษัทเปิดรับสมัครพนักงนใหม่','บริษัทเปิดรับสมัครพนักงานใหม่',{wrong:'พนักงน',correct:'พนักงาน'}],
+    ['แตละทีมมี','แต่ละทีมมี',{wrong:'แตละ',correct:'แต่ละ'}],
+    ['ชวงนี้','ช่วงนี้',{wrong:'ชวง',correct:'ช่วง'}],
+    ['ฟร!','ฟรี!',{wrong:'ฟร!',correct:'ฟรี!'}],
+    ['คำว่า Source Code','คำว่า Source code',{wrong:'Code',correct:'code'}],
+  ]) assert.deepEqual(locator.correctionWordSpan(wrong,correct),expected);
+});
+
+test('multiword rewrites remain in review without striking a sentence', () => {
+  const wrong = 'ข้อมูลบริษัทไหลออกไป', correct = 'เอกสารองค์กรหลุดออกไป';
+  const report = {total:1,checked:1,unchecked:[],corrections:[{wrong,correct,indices:[0]}]};
+  const output = locator.reanchor(audit.render(report,'test.png').html,
+    {width:1000,height:200,lines:[],paddleRegions:[region(wrong,10)]});
+  assert.equal(output.located,0);
+  assert.equal(output.unlocated,1);
+  const doc = new DOMParser().parseFromString(output.html,'text/html');
+  assert.equal(doc.querySelectorAll('.verified-spelling-mark,.review-spelling-mark').length,0);
+  assert.equal(doc.querySelectorAll('.correction-panel li').length,1);
+});
+
+test('an independent correct OCR reading suppresses an erroneous suggestion at the same word', () => {
+  const wrong = 'บริษัทรับสมัครพนักงนใหม่', correct = 'บริษัทรับสมัครพนักงานใหม่';
+  const report = {total:1,checked:1,unchecked:[],corrections:[{wrong,correct,indices:[0]}]};
+  const read = region(correct,10);
+  // Align the independent reading with the primary OCR character boxes.
+  const printed = region(wrong,10);
+  const start = correct.indexOf('พนักงาน');
+  const oldStart = wrong.indexOf('พนักงน');
+  for (let i=start;i<start+'พนักงาน'.length;i++) {
+    read.characters[i].box=[10+oldStart*12+(i-start)*72/7,10,10+oldStart*12+(i-start+1)*72/7,30];
+  }
+  const output = locator.reanchor(audit.render(report,'test.png').html,
+    {width:1000,height:200,paddleRegions:[printed],lines:[{text:correct,confidence:95,glyphs:read.characters}]});
+  assert.equal(output.located,0);
+  assert.equal(output.reviewCount,0);
+});

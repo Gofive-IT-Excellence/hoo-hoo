@@ -191,6 +191,35 @@
     return validFunctionWords.has(wrong.slice(start, endWrong));
   }
 
+  // The model may quote a whole sentence around a one-letter edit. Use the
+  // corrected text's word boundaries, never the entire quoted OCR region.
+  function correctionWordSpan(wrong, correct) {
+    if (!wrong || !correct || wrong.normalize('NFC') === correct.normalize('NFC') ||
+        wrong.replace(/\s/g, '') === correct.replace(/\s/g, '')) return null;
+    if (typeof Intl.Segmenter !== 'function') return null;
+    let start = 0, oldEnd = wrong.length, newEnd = correct.length;
+    while (start < Math.min(oldEnd, newEnd) && wrong[start] === correct[start]) start++;
+    while (oldEnd > start && newEnd > start && wrong[oldEnd-1] === correct[newEnd-1]) {oldEnd--;newEnd--;}
+    const words = [...new Intl.Segmenter('th', {granularity:'word'}).segment(correct)];
+    if (words.filter(part => part.isWordLike).length === 1 && wrong.length <= 32 && correct.length <= 32 &&
+        !/\s/.test(wrong) && !/\s/.test(correct)) return {wrong, correct};
+    const touched = words.filter(part => part.isWordLike && (newEnd > start
+      ? part.index < newEnd && part.index + part.segment.length > start
+      : part.index <= start && part.index + part.segment.length >= start));
+    // Several changed words are a rewrite, not a single spelling mark.
+    if (touched.length !== 1) return null;
+    const word = touched[0];
+    const from = Math.min(start, word.index);
+    const to = Math.max(newEnd, word.index + word.segment.length);
+    const oldTo = wrong.length - (correct.length - to);
+    const original = wrong.slice(from, oldTo), replacement = correct.slice(from, to);
+    if (!original || !replacement || original.length > 32 || replacement.length > 32 ||
+        /\s/.test(original) || /\s/.test(replacement) ||
+        /^[\p{M}]/u.test(original) || /^[\p{M}]/u.test(replacement) ||
+        /^[\p{M}]/u.test(wrong.slice(oldTo))) return null;
+    return {wrong:original, correct:replacement};
+  }
+
   function preservesPromptSpelling(ocr, original, corrected) {
     // เด็ด is valid in "Prompt เด็ด". OCR may omit เ, but replacing
     // the phrase with เด็ก changes its meaning rather than fixing spelling.
@@ -878,6 +907,21 @@
         duplicate.li.remove();Object.assign(duplicate, {li, box: match.box, score});
       } else li.remove();
     }
+    // Normalise before placing overlays so unchanged neighbours never
+    // contribute to strike coordinates or correction labels (including old results).
+    for (const li of panel.querySelectorAll('li')) {
+      const mark = li.querySelector('mark'), bold = li.querySelector('b');
+      if (!mark || !bold) continue;
+      const wrong = mark.textContent.trim(), correct = bold.textContent.trim();
+      if (changesValidFunctionWord(wrong, correct)) {li.remove();continue;}
+      const span = correctionWordSpan(wrong, correct);
+      if (!span) {
+        if (wrong.replace(/\s/g, '') === correct.replace(/\s/g, '')) li.remove();
+        else li.setAttribute('data-unresolved-word-span', 'true');
+        continue;
+      }
+      mark.textContent = span.wrong;bold.textContent = span.correct;
+    }
     const alternativeKey = (word, li) => JSON.stringify([word, li.getAttribute('data-ocr-region-indices')]);
     const alternatives=new Map();
     for(const li of panel.querySelectorAll('li')){
@@ -892,6 +936,11 @@
     for(const li of panel.querySelectorAll('li')){
       const mark=li.querySelector('mark');
       if(!mark){unlocated++;continue;}
+      if (li.hasAttribute('data-unresolved-word-span')) {
+        const note = doc.createElement('span');
+        note.textContent = ' — ยังแยกคำที่แก้ไม่ได้ จึงไม่ขีดทั้งประโยค';
+        li.append(note);unlocated++;continue;
+      }
       const ocr = scopeCorrection(fullOcr, li);
       const original=mark.textContent.trim(),all=li.textContent;
       const arrow=all.indexOf('→'),corrected=arrow<0?'':all.slice(arrow+1).trim();
@@ -1161,7 +1210,7 @@ function pdfLowerVowelIssues(operatorList, OPS) {
     }finally{await pdf.destroy();}
   }
 
-  const api={missingStackedTone,lines,locate,read,reanchor,renderLocal,preserveOriginal,canMark,annotatePdf,pdfLowerVowelIssues,annotatePdfLayout};
+  const api={correctionWordSpan,missingStackedTone,lines,locate,read,reanchor,renderLocal,preserveOriginal,canMark,annotatePdf,pdfLowerVowelIssues,annotatePdfLayout};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   else root.HooHooWordLocator=api;
 })(typeof window==='undefined'?globalThis:window);
