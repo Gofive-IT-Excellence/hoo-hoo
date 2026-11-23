@@ -8,7 +8,7 @@ import os
 import traceback
 import io
 import threading
-from proofreading import configured, proofread, validate_lines
+from proofreading import configured, proofread, validate_lines, LOCAL_MODEL
 
 app = Flask(__name__)
 
@@ -23,7 +23,7 @@ def health():
 
 @app.get("/proofread/health")
 def proofreading_health():
-    return jsonify({"configured": configured(), "engine": "contextual-line-audit"})
+    return jsonify({"configured": configured(), "engine": "local-llama.cpp", "model": LOCAL_MODEL})
 
 
 @app.post("/proofread")
@@ -126,6 +126,39 @@ def run_pdf_ocr(pdf_bytes):
 
     document.close()
     return words, pages
+
+
+def pdf_text_lines(data):
+    lines = []
+    with pdfium.PdfDocument(data) as document:
+        if len(document) > 20:
+            raise ValueError("กรุณาแบ่ง PDF ให้ไม่เกิน 20 หน้าต่อครั้ง")
+        for page in document:
+            with page.get_textpage() as textpage:
+                text = textpage.get_text_range()
+            if text.strip():
+                lines.extend(text.splitlines())
+            else:
+                image = page.render(scale=2).to_pil().convert("RGB")
+                buffer = io.BytesIO(); image.save(buffer, format="PNG")
+                lines.extend(w["text"] for w in run_image_ocr(buffer.getvalue()))
+            page.close()
+    return lines
+
+
+@app.post("/document/text")
+def extract_document_text():
+    from document_text import text_lines, pack_lines
+    upload = request.files.get("fileA")
+    if not upload:
+        return jsonify({"error": "missing fileA"}), 400
+    try:
+        return jsonify(pack_lines(text_lines(upload.read(), upload.filename or "", pdf_text_lines, run_image_ocr)))
+    except (ValueError, UnicodeError, KeyError) as error:
+        return jsonify({"error": str(error)}), 400
+    except Exception:
+        app.logger.exception("Document text extraction failed")
+        return jsonify({"error": "อ่านข้อความจากเอกสารไม่สำเร็จ"}), 422
 
 
 @app.route("/ocr", methods=["POST"])

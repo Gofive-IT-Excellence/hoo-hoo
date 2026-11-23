@@ -44,7 +44,7 @@ jobs:
           auditor = urllib.request.urlopen(root + '/image-proofreader.js').read().decode()
           assert 'HooHooImageAudit' in auditor
           model_health = json.load(urllib.request.urlopen(root + '/proofread/health'))
-          assert model_health == {'configured': False, 'engine': 'contextual-line-audit'}, model_health
+          assert model_health == {'configured': True, 'engine': 'local-llama.cpp', 'model': 'qwen3-8b'}, model_health
           buffer = io.BytesIO()
           image = Image.new('RGB', (320, 160), 'white')
           ImageDraw.Draw(image).text((20, 45), 'HELM TEST', font=ImageFont.load_default(size=42), fill='black')
@@ -55,7 +55,11 @@ jobs:
           assert (result['width'], result['height']) == (320, 160), result
           assert result['words'], result
           assert any(word['characters'] for word in result['words']), result
-          print('Offline model initialization, website and actual OCR inference passed')
+          data = json.dumps({'lines': [{'id': 7, 'text': 'โปรดตรวจสอบเอกสารก่อนส่ง'}]}).encode()
+          req = urllib.request.Request(root + '/proofread', data=data, headers={'Content-Type': 'application/json'})
+          audit = json.load(urllib.request.urlopen(req, timeout=150))
+          assert audit['unchecked'] == [] and audit['lines'][0]['id'] == 7, audit
+          print('Offline OCR and local language model inference passed')
           PYTEST
       - name: Container logs
         if: always()

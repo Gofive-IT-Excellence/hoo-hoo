@@ -87,7 +87,7 @@
     }
     async function pool(queue) {
       let cursor = 0;
-      await Promise.all(Array.from({length: Math.min(2, queue.length)}, async () => {
+      await Promise.all(Array.from({length: Math.min(1, queue.length)}, async () => {
         while (cursor < queue.length) await submit(queue[cursor++]);
       }));
     }
@@ -130,8 +130,8 @@
       lineCoverage: {total: report.total, checked: report.checked, unchecked: report.unchecked}};
   }
 
-  async function run(file, payload, {signal, onProgress} = {}) {
-    const request = async rows => {
+  function localRequest(signal) {
+    return async rows => {
       signal?.throwIfAborted();
       const response = await fetch('/proofread', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -141,6 +141,10 @@
       if (!response.ok) throw Error('บริการตรวจคำผิด HTTP ' + response.status);
       return response.json();
     };
+  }
+
+  async function run(file, payload, {signal, onProgress} = {}) {
+    const request = localRequest(signal);
     const report = await audit(payload, request, {signal, onProgress});
     signal?.throwIfAborted();
     const imageUrl = await new Promise((resolve, reject) => {
@@ -149,7 +153,28 @@
     });
     return render(report, imageUrl);
   }
-  const api = {plan, parse, audit, render, run};
+  async function runDocument(file, {signal, onProgress} = {}) {
+    const form = new FormData(); form.append('fileA', file);
+    const response = await fetch('/document/text', {method:'POST', body:form,
+      signal:AbortSignal.any([signal, AbortSignal.timeout(180_000)].filter(Boolean))});
+    const payload = await response.json();
+    if (!response.ok) throw Error(payload.error || 'อ่านเอกสารไม่สำเร็จ');
+    const report = await audit(payload, localRequest(signal), {signal,onProgress});
+    const result = render(report, '');
+    const doc = new DOMParser().parseFromString(result.html, 'text/html');
+    doc.querySelector('.wrapper').remove();
+    const original = doc.createElement('pre');
+    original.style.cssText = 'white-space:pre-wrap;line-height:1.8;font:inherit';
+    original.textContent = payload.text;
+    doc.body.append(original);
+    if (/\.pdf$/i.test(file.name)) {
+      const preview = doc.createElement('div'); preview.className='pdf-overlay-viewer'; doc.body.append(preview);
+    }
+    doc.querySelectorAll('.correction-panel mark').forEach(n=>n.className='correction-wrong');
+    doc.querySelectorAll('.correction-panel b').forEach(n=>n.className='correction-correct');
+    return {...result, html:'<!doctype html>'+doc.documentElement.outerHTML};
+  }
+  const api = {plan, parse, audit, render, run, runDocument};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.HooHooImageAudit = api;
 })(typeof window === 'undefined' ? globalThis : window);

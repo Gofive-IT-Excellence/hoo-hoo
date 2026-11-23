@@ -49,6 +49,15 @@ class ProofreadingTests(unittest.TestCase):
             {'wrong': 'ได', 'correct': 'ได้'}]}]}, [{'id': 0, 'text': 'ไดเลย'}])
         self.assertEqual(len(result['lines'][0]['corrections']), 1)
 
+    def test_meaning_changes_are_unchecked_and_spacing_is_not_a_typo(self):
+        lines = [{'id': 0, 'text': 'สินค้าผ่านมาตรฐนการตรวจสอบแล้ว'}]
+        result = validate_result({'lines': [{'id': 0, 'corrections': [
+            {'wrong': 'มาตรฐน', 'correct': 'มาตรการ'}]}]}, lines)
+        self.assertEqual(result['unchecked'], [0])
+        result = validate_result({'lines': [{'id': 0, 'corrections': [
+            {'wrong': 'ได้ สินเชื่อ', 'correct': 'ได้สินเชื่อ'}]}]}, [{'id': 0, 'text': 'ได้ สินเชื่อ'}])
+        self.assertEqual(result['lines'][0]['corrections'], [])
+
     def test_invalid_and_oversized_requests(self):
         for rows in [[], [{'id': True, 'text': 'ข้อมูล'}],
                      [{'id': 0, 'text': 'ก' * 10001}],
@@ -62,15 +71,17 @@ class ProofreadingTests(unittest.TestCase):
                 proofread([{'id': 0, 'text': 'ตัวอย่าง'}], opener=lambda *a, **k: io.StringIO(json.dumps({
                     'choices': [{'finish_reason': 'length', 'message': {'content': '{'}}]})))
 
-    def test_secret_stays_in_header_and_untrusted_document_stays_in_user_message(self):
+    def test_old_gateway_secret_is_ignored_and_document_stays_in_user_message(self):
         def opener(request, **kwargs):
             body = json.loads(request.data)
             self.assertNotIn('synthetic-test-key', request.data.decode())
-            self.assertEqual(request.get_header('Authorization'), 'Bearer synthetic-test-key')
+            self.assertIsNone(request.get_header('Authorization'))
+            self.assertEqual(request.full_url, 'http://127.0.0.1:5056/v1/chat/completions')
+            self.assertEqual(body['model'], 'qwen3-8b')
             self.assertEqual(body['messages'][1]['role'], 'user')
             return io.StringIO(json.dumps({'choices': [{'finish_reason': 'stop', 'message': {
                 'content': json.dumps({'lines': [{'id': 7, 'corrections': []}]})}}]}))
-        with patch.dict(os.environ, {'PROOFREAD_API_KEY': 'synthetic-test-key'}):
+        with patch.dict(os.environ, {'PROOFREAD_API_KEY': 'synthetic-test-key', 'PROOFREAD_API_URL': 'https://external.invalid', 'PROOFREAD_MODEL': 'old-model'}):
             result = proofread([{'id': 7, 'text': 'ข้อความสังเคราะห์'}], opener=opener)
         self.assertEqual(result['unchecked'], [])
 

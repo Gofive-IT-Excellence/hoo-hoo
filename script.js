@@ -1,8 +1,8 @@
 const OCR_ENDPOINT =
-"https://n8n.tks.co.th/webhook/hoo-hoo-ocr";
+"/document/text";
 
 const TEXT_ENDPOINT =
-"https://n8n.tks.co.th/webhook/text-proofreader";
+"/document/text";
 
 const HOOHOO_CHAT_ENDPOINT =
 "https://n8n.tks.co.th/webhook/hoohoo-chat";
@@ -544,31 +544,15 @@ async function sendToN8N() {
 
 setProgress(browserOcr ? "กำลังส่งข้อความและไฟล์ต้นฉบับไปตรวจ" : "กำลังส่งไฟล์ต้นฉบับไปตรวจ");
     let json;
-    if (paddleOcr && effectiveMode === 'single' && window.HooHooImageAudit) {
-      json = await HooHooImageAudit.run(fileA, paddleOcr, {
-        signal: controller.signal,
-        onProgress: ({checked, total}) => setProgress('ตรวจจากบริบทแล้ว ' + checked + ' / ' + total + ' บรรทัด'),
-      });
+    const auditOptions = {
+      signal: controller.signal,
+      onProgress: ({checked, total}) => setProgress('ตรวจด้วยโมเดลภายในแล้ว ' + checked + ' / ' + total + ' บรรทัด'),
+    };
+    if (effectiveMode === 'single' && /^image\//.test(fileA.type)) {
+      if (!browserOcr) throw Error('อ่านข้อความจากภาพไม่สำเร็จ กรุณาลองใหม่');
+      json = await HooHooImageAudit.run(fileA, browserOcr, auditOptions);
     } else {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        body: form,
-        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(paddleOcr ? 480_000 : 120_000)]),
-      });
-
-      if (!response.ok) throw new Error(`บริการตรวจเอกสารตอบกลับ HTTP ${response.status}`);
-      const responseText = await response.text();
-
-      try {
-        json = responseText ? JSON.parse(responseText) : {};
-      } catch (parseError) {
-        throw new Error(
-          responseText
-            ? `n8n ตอบกลับไม่ใช่ JSON: ${responseText.slice(0, 500)}`
-            : "n8n ตอบกลับว่างเปล่า"
-        );
-      }
-
+      json = await HooHooImageAudit.runDocument(fileA, auditOptions);
     }
 
     if (!isCurrentRequest()) return;

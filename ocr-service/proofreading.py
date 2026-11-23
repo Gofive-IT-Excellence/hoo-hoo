@@ -3,10 +3,13 @@ import json
 import os
 import unicodedata
 import urllib.request
+import threading
 from urllib.error import HTTPError, URLError
 
-DEFAULT_URL = "https://llm-gateway.tks.co.th/v1/chat/completions"
-DEFAULT_MODEL = "DeepSeek-V4-Flash-0731"
+LOCAL_URL = "http://127.0.0.1:5056/v1/chat/completions"
+LOCAL_MODEL = "qwen3-8b"
+MODEL_LOCK = threading.Lock()
+LOCAL_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 SYSTEM_PROMPT = """คุณคือผู้ตรวจพิสูจน์อักษรภาษาไทยและอังกฤษ ตรวจทุกคำในแต่ละบรรทัดตามบริบท
 ไม่ใช่เพียงคำผิดที่คุ้นเคย หาอักษรและสระที่หายไป เกิน สลับ หรือแทนตัวผิด รวมทั้งวรรณยุกต์และการันต์
 ให้คงคำเดิมที่ผิดไว้ใน wrong อย่างตรงตัว ห้ามแก้คำถูก ชื่อเฉพาะ ตัวย่อ แบรนด์ หรือแนะนำเปลี่ยนสำนวน
@@ -39,6 +42,25 @@ def changes_valid_function_word(wrong, correct):
     return wrong[start:end_wrong] in FUNCTION_WORDS
 
 
+def conservative_edit(wrong, correct):
+    # A spelling suggestion must remain close to its source. Larger rewrites
+    # leave the line unchecked rather than silently certifying it as clean.
+    a, b = wrong, correct
+    while a and b and a[0] == b[0]:
+        a, b = a[1:], b[1:]
+    while a and b and a[-1] == b[-1]:
+        a, b = a[:-1], b[:-1]
+    if abs(len(a) - len(b)) > 2:
+        return False
+    row = list(range(len(b) + 1))
+    for i, x in enumerate(a, 1):
+        next_row = [i]
+        for j, y in enumerate(b, 1):
+            next_row.append(min(next_row[-1] + 1, row[j] + 1, row[j-1] + (x != y)))
+        row = next_row
+    return row[-1] <= 2
+
+
 def contains_complete_span(text, word):
     start = text.find(word)
     while start >= 0:
@@ -50,7 +72,11 @@ def contains_complete_span(text, word):
 
 
 def configured():
-    return bool(os.environ.get("PROOFREAD_API_KEY", "").strip())
+    try:
+        with LOCAL_OPENER.open("http://127.0.0.1:5056/health", timeout=2) as response:
+            return response.status == 200
+    except (HTTPError, URLError, TimeoutError):
+        return False
 
 
 def validate_lines(lines):
@@ -99,6 +125,11 @@ def validate_result(result, lines):
                 continue
             if changes_valid_function_word(wrong, correct):
                 continue
+            if ''.join(wrong.split()) == ''.join(correct.split()):
+                continue
+            if not conservative_edit(wrong, correct):
+                invalid = True
+                continue
             if wrong != correct:
                 corrections.append({"wrong": wrong, "correct": correct})
         # Invalid suggestions must trigger a retry, not certify the line as clean.
@@ -107,35 +138,31 @@ def validate_result(result, lines):
     return {"lines": checked, "unchecked": [i for i in source if i not in {r["id"] for r in checked}]}
 
 
-def proofread(lines, *, opener=urllib.request.urlopen):
+def proofread(lines, *, opener=None):
+    opener = opener or LOCAL_OPENER.open
     lines = validate_lines(lines)
-    key = os.environ.get("PROOFREAD_API_KEY", "").strip()
-    if not key:
-        raise RuntimeError("PROOFREAD_API_KEY is not configured")
-    url = os.environ.get("PROOFREAD_API_URL", DEFAULT_URL)
-    if not url.startswith("https://"):
-        raise ValueError("Proofreading gateway must use HTTPS")
+    # Fixed loopback endpoint: old Gateway variables and keys are deliberately ignored.
     body = {
-        "model": os.environ.get("PROOFREAD_MODEL", DEFAULT_MODEL),
-        "temperature": 0, "max_tokens": 4000,
-        "thinking": {"type": "disabled"}, "reasoning_effort": "none",
-        "response_format": {"type": "json_object"},
+        "model": LOCAL_MODEL,
+        "temperature": 0, "max_tokens": 1536,
+        "chat_template_kwargs": {"enable_thinking": False}, "reasoning_effort": "none",
+        "response_format": {"type": "json_object", "schema": result_schema(lines)},
         "messages": [{"role": "system", "content": SYSTEM_PROMPT},
                      {"role": "user", "content": json.dumps(lines, ensure_ascii=False)}],
     }
-    request = urllib.request.Request(url, data=json.dumps(body).encode(), headers={
-        "Authorization": key if key.startswith("Bearer ") else "Bearer " + key,
+    request = urllib.request.Request(LOCAL_URL, data=json.dumps(body).encode(), headers={
         "Content-Type": "application/json",
     })
-    try:
-        with opener(request, timeout=120) as response:
-            data = json.load(response)
-    except (HTTPError, URLError, TimeoutError) as error:
-        # Never include gateway response bodies or credentials in client errors.
-        raise RuntimeError("Proofreading gateway request failed") from error
+    # One generation at a time keeps CPU and memory bounded across concurrent uploads.
+    with MODEL_LOCK:
+        try:
+            with opener(request, timeout=120) as response:
+                data = json.load(response)
+        except (HTTPError, URLError, TimeoutError) as error:
+            raise RuntimeError("Local proofreading model request failed") from error
     choices = data.get("choices") if isinstance(data, dict) else None
     if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
-        raise RuntimeError("Proofreading gateway returned no result")
+        raise RuntimeError("Local proofreading model returned no result")
     choice = choices[0]
     if choice.get("finish_reason") == "length":
         raise RuntimeError("Proofreading response was truncated")
@@ -143,4 +170,18 @@ def proofread(lines, *, opener=urllib.request.urlopen):
     try:
         return validate_result(json.loads(content), lines)
     except (ValueError, TypeError) as error:
-        raise RuntimeError("Proofreading gateway returned invalid results") from error
+        raise RuntimeError("Local proofreading model returned invalid results") from error
+
+
+def result_schema(lines):
+    correction = {"type": "object", "properties": {
+        "wrong": {"type": "string", "minLength": 1, "maxLength": 100},
+        "correct": {"type": "string", "minLength": 1, "maxLength": 100}},
+        "required": ["wrong", "correct"], "additionalProperties": False}
+    row = {"type": "object", "properties": {
+        "id": {"type": "integer", "enum": [line["id"] for line in lines]},
+        "corrections": {"type": "array", "items": correction, "maxItems": 12}},
+        "required": ["id", "corrections"], "additionalProperties": False}
+    return {"type": "object", "properties": {"lines": {
+        "type": "array", "items": row, "minItems": len(lines), "maxItems": len(lines)}},
+        "required": ["lines"], "additionalProperties": False}
