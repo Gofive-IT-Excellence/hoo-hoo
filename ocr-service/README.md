@@ -1,66 +1,44 @@
-# PaddleOCR bundled deployment
+# Bundled OCR and local proofreading
 
-The root Dockerfile builds the website and a CPU PaddleOCR service into one image.
-The Thai recognition and mobile detection models are downloaded at build time and copied to
-/opt/ocr-models. Runtime initializes explicit local model paths.
+The Dockerfile packages nginx, OpenThai OCR Text 2.1.4 and a local Qwen3 8B
+spelling model served by llama.cpp. See [SELF_HOSTED.md](SELF_HOSTED.md) for pinned
+versions, resource requirements and inference isolation.
 
 ## Coolify
 
-Change the existing application's build pack from Static to Dockerfile.
-Use /Dockerfile and expose port 8080. Deploy the same existing domain.
-Build requires access to Python packages and PaddleOCR model downloads.
-This replaces the static runtime with nginx and one Python OCR worker.
-CPU and memory consumption will increase and must be checked during rollout.
+Use the existing application's Dockerfile strategy, `/Dockerfile`, base directory
+`/` and exposed port `8080`. Keep the existing domain. Model weights are included
+at build time. No runtime Gateway key or remote model URL is used for spelling
+checks. Existing Gateway environment variables are ignored.
 
-POST /ocr accepts multipart fileA from the image-check mode or the existing n8n JSON contract:
+## Endpoints
 
-    {"base64": "<base64 image or PDF, optional data URI prefix>"}
+- `POST /ocr`: multipart `fileA`, or JSON `base64` image/PDF. Returns text and
+  regions with confidence, page, polygon and CTC character positions.
+- `POST /document/text`: multipart `fileA` for TXT, DOCX, DOC, PDF or images.
+  Extraction runs locally; scanned PDF pages use OCR.
+- `POST /proofread`: JSON `lines` with original integer IDs and literal text.
+  Returns spelling suggestions and explicit unchecked IDs. The model endpoint
+  is fixed to loopback; there is no fallback to the old shared Gateway.
+- `GET /ocr/health`: healthy only after OCR and the language model are ready.
+- `GET /proofread/health`: actual local model name and readiness.
 
-The response includes text and words with confidence, page, x/y/w/h and four-point box.
-PaddleOCR regions may be entire lines rather than individual words.
-GET /ocr/health reports readiness after model initialization.
+The browser sends up to three regions and about 450 characters per batch, with
+one batch in flight. A single longer region is retained. Missing coverage is
+retried once. Busy responses back off before retrying. Invalid large rewrites
+remain unchecked; correct function words and existing Thai combining marks are
+protected. Suggestions retain source IDs and character boxes for occurrence
+placement. Character bounds are approximate; missing word boxes are not replaced
+with an entire line. The independent browser OCR remains available for checking
+apparent OCR errors.
 
-Image mode calls /ocr on the same origin, then /proofread for contextual spelling.
-Browser OCR supplies an independent character reading for checking apparent OCR
-errors. PaddleOCR character bounds come from recognizer CTC alignment inside
-detection polygons. These bounds are approximate; a full-line box is never used
-as a substitute for a missing word box. When PaddleOCR is unavailable, the legacy
-n8n image path remains a fallback. Text and comparison modes retain their existing
-services. The localhost local-ocr=1 link is only a dictionary preview.
+The separate chat assistant retains its n8n integration. Document comparison
+runs in the browser. Neither path is changed into a spelling audit.
 
 ## Validation
 
-Python syntax and shell syntax can be checked locally. Build and smoke-test the
-Linux image before switching production:
-
-    docker build -t hoo-hoo-paddle .
-    docker run --rm -p 8080:8080 hoo-hoo-paddle
-
-The local model test uses OCR_MODEL_ROOT pointing to existing PaddleOCR models.
-The deployment image runs the same configuration but bundles downloaded models.
-
-The PaddleOCR container check workflow builds the Linux image and checks startup,
-static assets and real OCR inference with networking disabled at runtime.
-
-## Contextual proofreading of new work
-
-Image mode now sends literal PaddleOCR regions to POST /proofread in batches of
-at most six. The gateway audits spelling from context, independently of the
-frontend typo dictionary. Each response must account for every input region,
-including correct text. Missing or invalid regions are retried once in smaller
-batches. Incomplete coverage remains visibly incomplete. Corrections retain their
-source region IDs and use real OCR character boxes; identical text elsewhere is
-not automatically marked.
-
-Set the runtime environment variable PROOFREAD_API_KEY in Coolify using the same
-LLM gateway credential already used by the n8n workflow. Never add it to a build
-argument, the frontend, this repository, or an image layer. Redeploy after saving.
-Defaults: PROOFREAD_API_URL=https://llm-gateway.tks.co.th/v1/chat/completions,
-PROOFREAD_MODEL=DeepSeek-V4-Flash-0731. These two settings are optional.
-GET /proofread/health exposes only whether the key is configured, never the key.
-Without the runtime key the model endpoint returns 503; it does not claim a clean
-result. PaddleOCR and the service health endpoint remain independent of model
-configuration. The spelling gateway receives OCR text; user images stay at /ocr.
-
-The model may still miss typos or be misled by OCR errors. The synthetic benchmark
-is an integration check, not a guarantee for every document, font or domain.
+Run `npm test` and `python3 -m unittest discover -s ocr-service -p 'test_*.py'`
+(with NumPy installed). The container workflow builds Linux CPU inference and
+runs OCR and language model smoke tests with `--network none` using generated
+test data. Model quality benchmarks are small integration checks, not guarantees
+for every document, font or domain.

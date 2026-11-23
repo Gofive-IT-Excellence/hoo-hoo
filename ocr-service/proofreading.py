@@ -4,6 +4,7 @@ import os
 import unicodedata
 import urllib.request
 import threading
+import re
 from urllib.error import HTTPError, URLError
 
 LOCAL_URL = "http://127.0.0.1:5056/v1/chat/completions"
@@ -59,6 +60,13 @@ def conservative_edit(wrong, correct):
             next_row.append(min(next_row[-1] + 1, row[j] + 1, row[j-1] + (x != y)))
         row = next_row
     return row[-1] <= 2
+
+
+def introduced_repetition(source, wrong, correct):
+    def repeats(text):
+        compact = ''.join(text.split())
+        return {match.group(1) for match in re.finditer(r'([ก-๙]{2,20})\1', compact)}
+    return bool(repeats(source.replace(wrong, correct, 1)) - repeats(source))
 
 
 def contains_complete_span(text, word):
@@ -131,7 +139,7 @@ def validate_result(result, lines):
                 continue
             if ''.join(wrong.split()) == ''.join(correct.split()):
                 continue
-            if not conservative_edit(wrong, correct):
+            if not conservative_edit(wrong, correct) or introduced_repetition(source[index], wrong, correct):
                 invalid = True
                 continue
             if wrong != correct:
@@ -163,7 +171,7 @@ def proofread(lines, *, opener=None):
     try:
         with opener(request, timeout=120) as response:
             data = json.load(response)
-    except (HTTPError, URLError, TimeoutError) as error:
+    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as error:
         raise RuntimeError("Local proofreading model request failed") from error
     finally:
         MODEL_LOCK.release()

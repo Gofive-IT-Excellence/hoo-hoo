@@ -58,6 +58,12 @@ class ProofreadingTests(unittest.TestCase):
             {'wrong': 'ได้ สินเชื่อ', 'correct': 'ได้สินเชื่อ'}]}]}, [{'id': 0, 'text': 'ได้ สินเชื่อ'}])
         self.assertEqual(result['lines'][0]['corrections'], [])
 
+    def test_suggestion_that_introduces_a_repeated_word_is_unchecked(self):
+        result = validate_result({'lines': [{'id': 0, 'corrections': [
+            {'wrong': 'กาน', 'correct': 'ก่อน'}]}]},
+            [{'id': 0, 'text': 'กรุณาตรวจสอบกำหนดกานก่อนเข้าร่วมงาน'}])
+        self.assertEqual(result['unchecked'], [0])
+
     def test_invalid_and_oversized_requests(self):
         for rows in [[], [{'id': True, 'text': 'ข้อมูล'}],
                      [{'id': 0, 'text': 'ก' * 10001}],

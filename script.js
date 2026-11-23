@@ -565,8 +565,8 @@ setProgress(browserOcr ? "กำลังส่งข้อความและ
 
     if (html) {
       let finalHtml = html;
-      let needsReview = effectiveMode === 'single';
-      let noVerifiedLines = false;
+      let needsReview = effectiveMode === 'single' || Boolean(json.incomplete);
+      let noVerifiedLines = Boolean(json.incomplete && json.lineCoverage?.checked === 0);
       if (effectiveMode === 'single' && /^image\//.test(fileA.type)) {
         statusText.textContent = 'กำลังยืนยันตำแหน่งคำจากภาพจริง';
         const imageLocations = browserLocator || {
@@ -619,7 +619,7 @@ setProgress(browserOcr ? "กำลังส่งข้อความและ
       resultBox.classList.remove("is-loading");
       renderResultHtml(finalHtml);
       statusText.textContent = noVerifiedLines
-        ? 'ยังยืนยันผลตรวจจากภาพไม่ได้'
+        ? 'ยังยืนยันผลตรวจไม่ได้'
         : needsReview ? 'ประมวลผลแล้ว — โปรดตรวจทานกับต้นฉบับ' : 'ประมวลผลเสร็จแล้ว';
     } else {
       resultBox.classList.remove("is-loading");

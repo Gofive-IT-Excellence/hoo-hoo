@@ -15,7 +15,7 @@ const suggestion = (wrong, correct) => '<li><mark>' + wrong + '</mark> → <b>' 
 test('every source region is planned once, including headings and footer text', () => {
   const payload = {regions: Array.from({length: 14}, (_, i) => row('ข้อความ ' + i, i))};
   const plan = audit.plan(payload);
-  assert.deepEqual(plan.batches.map(b => b.length), [6, 6, 2]);
+  assert.deepEqual(plan.batches.map(b => b.length), [3, 3, 3, 3, 2]);
   assert.deepEqual(plan.batches.flat().map(r => r.index), Array.from({length: 14}, (_, i) => i));
 });
 

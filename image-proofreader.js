@@ -11,7 +11,7 @@
     const batches = [];
     let batch = [], chars = 0;
     for (const row of eligible) {
-      if (batch.length && (batch.length >= 6 || chars + row.text.length > 900)) {
+      if (batch.length && (batch.length >= 3 || chars + row.text.length > 450)) {
         batches.push(batch); batch = []; chars = 0;
       }
       batch.push(row); chars += row.text.length;
