@@ -1,4 +1,4 @@
-name: PaddleOCR container check
+name: OpenThai OCR container check
 on:
   push:
     branches: [main]
@@ -20,6 +20,7 @@ jobs:
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           npm test
+          python3 -m pip install numpy==2.2.6
           python3 -m unittest discover -s ocr-service -p 'test_*.py'
       - name: Build bundled OCR image
         run: docker build -t hoo-hoo-paddle .
@@ -35,7 +36,7 @@ jobs:
           from PIL import Image, ImageDraw, ImageFont
           root = 'http://127.0.0.1:8080'
           health = json.load(urllib.request.urlopen(root + '/ocr/health', timeout=10))
-          assert health['engine'] == 'paddleocr', health
+          assert health['engine'] == 'openthai-ocr-text', health
           html = urllib.request.urlopen(root).read().decode()
           assert 'ocr-word-locator-v2.js?v=' in html
           script = urllib.request.urlopen(root + '/script.js').read().decode()

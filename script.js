@@ -378,11 +378,11 @@ async function readPaddleImage(file, parentSignal) {
   const form = new FormData();
   form.append("fileA", file);
   const response = await fetch("/ocr", {method: "POST", body: form, signal});
-  if (!response.ok) throw new Error("PaddleOCR HTTP " + response.status);
+  if (!response.ok) throw new Error("OCR HTTP " + response.status);
   const result = await response.json();
   if (!Number.isInteger(result.width) || !Number.isInteger(result.height) ||
       result.width < 1 || result.height < 1 || !Array.isArray(result.words)) {
-    throw new Error("PaddleOCR returned invalid image coordinates");
+    throw new Error("OCR returned invalid image coordinates");
   }
   const regions = result.words.filter(word =>
     typeof word.text === "string" && word.text.trim() &&
@@ -404,8 +404,8 @@ async function readPaddleImage(file, parentSignal) {
       })),
     };
   }).filter(region => region.bbox[2] > region.bbox[0] && region.bbox[3] > region.bbox[1]);
-  if (!regions.length) throw new Error("PaddleOCR found no text");
-  return {version:1, engine:"paddleocr-th", width:result.width, height:result.height, regions};
+  if (!regions.length) throw new Error("OCR found no text");
+  return {version:1, engine:"openthai-ocr-text", width:result.width, height:result.height, regions};
 }
 
 // Location OCR is optional: the server also receives the original image.
@@ -514,7 +514,7 @@ async function sendToN8N() {
         readImageLocations(fileA, controller.signal),
       ]);
       if (readings[0].status === "fulfilled") paddleOcr = readings[0].value;
-      else console.warn("PaddleOCR unavailable", readings[0].reason);
+      else console.warn("OCR unavailable", readings[0].reason);
       if (readings[1].status === "fulfilled") browserLocator = readings[1].value;
       else console.warn("Browser OCR unavailable", readings[1].reason);
     }

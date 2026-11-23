@@ -18,7 +18,7 @@ ocr_lock = threading.Lock()
 
 @app.get("/health")
 def health():
-    return jsonify({"status": "ok", "engine": "paddleocr", "language": "th"})
+    return jsonify({"status": "ok", "engine": "openthai-ocr-text", "version": "2.1.4", "language": "th"})
 
 
 @app.get("/proofread/health")
@@ -49,56 +49,19 @@ PDF_RENDER_SCALE = 2.0
 def extract_words(result, page_number=1):
     words = []
 
-    for res in result:
-        data = res.json if hasattr(res, "json") else res
-
-        if "res" in data:
-            data = data["res"]
-
-        texts = data.get("rec_texts", [])
-        scores = data.get("rec_scores", [])
-        polys = data.get("rec_polys", data.get("dt_polys", []))
-
-        for i, text in enumerate(texts):
-            if not text:
-                continue
-
-            score = float(scores[i]) if i < len(scores) else 0
-            poly = polys[i] if i < len(polys) else None
-
-            if poly is None:
-                continue
-
-            box = [[float(p[0]), float(p[1])] for p in poly]
-            xs = [p[0] for p in box]
-            ys = [p[1] for p in box]
-
-            characters = []
-            offset = 0
-            line_characters = data.get("text_word", [])
-            line_boxes = data.get("text_word_boxes", [])
-            if i < len(line_characters) and i < len(line_boxes):
-                for character, polygon in zip(line_characters[i], line_boxes[i]):
-                    start = text.find(character, offset)
-                    if start < 0:
-                        continue
-                    x0, y0, x1, y1 = map(float, polygon)
-                    points = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
-                    characters.append({"text": character, "start": start,
-                                       "end": start + len(character), "box": points})
-                    offset = start + len(character)
-
-            words.append({
-                "text": text,
-                "characters": characters,
-                "confidence": score,
-                "x": min(xs),
-                "y": min(ys),
-                "w": max(xs) - min(xs),
-                "h": max(ys) - min(ys),
-                "box": box,
-                "page": page_number
-            })
+    for line in result.get("lines", []):
+        text = line.get("text", "")
+        box = line.get("box")
+        if not text or not box:
+            continue
+        box = [[float(x), float(y)] for x, y in box]
+        xs, ys = zip(*box)
+        words.append({
+            "text": text, "characters": line.get("characters", []),
+            "confidence": float(line.get("confidence", 0)),
+            "x": min(xs), "y": min(ys), "w": max(xs)-min(xs), "h": max(ys)-min(ys),
+            "box": box, "page": page_number,
+        })
 
     return words
 
@@ -112,7 +75,7 @@ def run_image_ocr(image_bytes):
             image_path = f.name
 
         with ocr_lock:
-            return extract_words(ocr.predict(image_path, return_word_box=True))
+            return extract_words(ocr.read(image_path))
     finally:
         if image_path and os.path.exists(image_path):
             os.remove(image_path)
@@ -143,7 +106,7 @@ def run_pdf_ocr(pdf_bytes):
 
             with ocr_lock:
                 page_words = extract_words(
-                    ocr.predict(image_path, return_word_box=True),
+                    ocr.read(image_path),
                     page_number=page_index + 1
                 )
             page_text = " ".join(word["text"] for word in page_words)
