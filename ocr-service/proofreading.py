@@ -44,14 +44,24 @@ def changes_valid_function_word(wrong, correct):
 
 
 def conservative_edit(wrong, correct):
-    # A spelling suggestion must remain close to its source. Larger rewrites
-    # leave the line unchecked rather than silently certifying it as clean.
-    a, b = wrong, correct
+    # Treat a consonant with Thai combining vowels/tones as one glyph group.
+    # Permit one group edit (or adjacent transposition), not a multi-letter rewrite.
+    def groups(text):
+        result = []
+        for ch in text:
+            if result and unicodedata.category(ch).startswith('M'):
+                result[-1] += ch
+            else:
+                result.append(ch)
+        return result
+    a, b = groups(wrong), groups(correct)
     while a and b and a[0] == b[0]:
         a, b = a[1:], b[1:]
     while a and b and a[-1] == b[-1]:
         a, b = a[:-1], b[:-1]
-    if abs(len(a) - len(b)) > 2:
+    if len(a) == len(b) == 2 and a == b[::-1]:
+        return True
+    if abs(len(a) - len(b)) > 1:
         return False
     row = list(range(len(b) + 1))
     for i, x in enumerate(a, 1):
@@ -59,7 +69,7 @@ def conservative_edit(wrong, correct):
         for j, y in enumerate(b, 1):
             next_row.append(min(next_row[-1] + 1, row[j] + 1, row[j-1] + (x != y)))
         row = next_row
-    return row[-1] <= 2
+    return row[-1] <= 1
 
 
 def introduced_repetition(source, wrong, correct):

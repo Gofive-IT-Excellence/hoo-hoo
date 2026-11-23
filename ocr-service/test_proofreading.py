@@ -64,6 +64,15 @@ class ProofreadingTests(unittest.TestCase):
             [{'id': 0, 'text': 'กรุณาตรวจสอบกำหนดกานก่อนเข้าร่วมงาน'}])
         self.assertEqual(result['unchecked'], [0])
 
+    def test_conservative_glyph_edits_keep_thai_karan_and_reject_rewrites(self):
+        result = validate_result({'lines': [{'id': 0, 'corrections': [
+            {'wrong': 'ประชาสัมพัน', 'correct': 'ประชาสัมพันธ์'}]}]},
+            [{'id': 0, 'text': 'เจ้าหน้าที่ประชาสัมพัน'}])
+        self.assertEqual(len(result['lines'][0]['corrections']), 1)
+        result = validate_result({'lines': [{'id': 0, 'corrections': [
+            {'wrong': 'กาน', 'correct': 'กิจ'}]}]}, [{'id': 0, 'text': 'กำหนดกาน'}])
+        self.assertEqual(result['unchecked'], [0])
+
     def test_invalid_and_oversized_requests(self):
         for rows in [[], [{'id': True, 'text': 'ข้อมูล'}],
                      [{'id': 0, 'text': 'ก' * 10001}],
