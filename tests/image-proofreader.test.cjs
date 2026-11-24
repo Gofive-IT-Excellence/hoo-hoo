@@ -503,3 +503,31 @@ test('render deduplication retains ท่วม labels at genuinely different po
   assert.equal(doc.querySelectorAll('.verified-spelling-correction,.review-spelling-correction').length,2);
   assert.equal(output.located,2);
 });
+
+test('รด inside สามารด cannot invent a separate รอด correction', () => {
+  const report={total:1,checked:1,unchecked:[],corrections:[
+    {wrong:'รด',correct:'รอด',indices:[0]},
+    {wrong:'สามารด',correct:'สามารถ',indices:[0]},
+  ]};
+  const output=locator.reanchor(audit.render(report,'test.png').html,{
+    width:500,height:200,lines:[],paddleRegions:[region('คณสามารด',30)]
+  });
+  const doc=new DOMParser().parseFromString(output.html,'text/html');
+  assert.equal(doc.querySelectorAll('.correction-panel li').length,2);
+  assert.ok([...doc.querySelectorAll('.correction-panel b')].some(n=>n.textContent==='สามารถ'));
+  assert.equal(output.located,2);
+  assert.equal(output.unlocated,0);
+  assert.equal(doc.body.textContent.includes('รอด'),false);
+});
+
+test('nested-word filtering respects the source occurrence and preserves other novel corrections', () => {
+  const report={total:2,checked:2,unchecked:[],corrections:[
+    {wrong:'รด',correct:'รอด',indices:[0]},
+    {wrong:'พนักงน',correct:'พนักงาน',indices:[1]},
+  ]};
+  const output=locator.reanchor(audit.render(report,'test.png').html,{
+    width:500,height:200,lines:[],paddleRegions:[region('รด',30),region('สามารดพนักงน',100)]
+  });
+  assert.equal(output.reviewCount,3);
+  assert.equal(output.located,3);
+});

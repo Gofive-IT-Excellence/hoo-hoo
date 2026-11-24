@@ -196,6 +196,31 @@
       validationLines: rows(ocr.validationLines), pixelCorrections: (ocr.pixelCorrections || []).filter(within)};
   }
 
+  // An OCR/model split inside a known spelling error is not another word.
+  // For example รด in สามารด must not create รด → รอด alongside สามารถ.
+  function isNestedSpellingSuggestion(ocr, word) {
+    if (!word) return false;
+    const rows = ocr?.paddleRegions?.length ? ocr.paddleRegions : (ocr?.lines || []);
+    const occurrences = [];
+    for (const row of rows) {
+      let start = row.text.indexOf(word);
+      while (start >= 0) {
+        const nested = [...clearPairs.keys()].some(parent => {
+          if (parent.length <= word.length || !parent.includes(word)) return false;
+          let at = row.text.indexOf(parent);
+          while (at >= 0) {
+            if (at <= start && at + parent.length >= start + word.length) return true;
+            at = row.text.indexOf(parent, at + 1);
+          }
+          return false;
+        });
+        occurrences.push(nested);
+        start = row.text.indexOf(word, start + word.length);
+      }
+    }
+    return occurrences.length > 0 && occurrences.every(Boolean);
+  }
+
   const validFunctionWords = new Set('ที่ และ หรือ ซึ่ง ใน ของ ให้ ได้ เป็น จะ แต่ กับ จาก โดย เมื่อ นั้น นี้ ละ ล่ะ นะ น่ะ คะ ค่ะ ครับ'.split(' '));
   function changesValidFunctionWord(wrong, correct) {
     if (wrong === correct) return false;
@@ -973,6 +998,7 @@
       // Source and Code are valid technical words, not incomplete spellings.
       // Also ignore case-only styling changes; neither is a spelling error.
       const productRows = scopeCorrection(ocr,li);
+      if (isNestedSpellingSuggestion(productRows, span.wrong)) {li.remove();continue;}
       const googleVids = /^vids$/i.test(span.wrong) &&
         [...(productRows.paddleRegions || []), ...(productRows.lines || [])]
           .some(row => /\b(?:Google|Goegle)\s*Vids\b/i.test(row.text));
