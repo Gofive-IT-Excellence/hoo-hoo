@@ -143,6 +143,18 @@
     label.style.left=(x+r)/2/ocr.width*100+'%';label.style.top=below
       ? (b+gap)/ocr.height*100+'%'
       : 'max('+Math.max(0,y-gap)/ocr.height*100+'%, clamp(10.35px,'+(Number(labelSize)*1.15)+'cqw,18.4px))';
+    if (wrapper.dataset.correctOnHover === 'true') {
+      mark.classList.add('document-hover-mark');
+      mark.title = corrected; mark.dataset.correction = corrected;
+      mark.tabIndex = 0; mark.setAttribute('aria-label',original+' → '+corrected);
+      mark.style.top = y/ocr.height*100+'%';
+      mark.style.height = (b-y)/ocr.height*100+'%';
+      mark.style.borderTop = '0';
+      mark.style.background = 'linear-gradient(transparent calc(50% - 1px), #dc2626 calc(50% - 1px), #dc2626 calc(50% + 1px), transparent calc(50% + 1px))';
+      mark.style.cursor = 'help';
+      wrapper.append(mark);
+      return true;
+    }
     wrapper.append(mark,label);
     return true;
   }
@@ -1185,10 +1197,11 @@
     if(summary)summary.textContent='ผ่านกฎสะกดในข้อความ '+marked+' จุด — PDF ต้องยืนยันพิกัดภาพเพิ่ม ไม่ได้แก้ต้นฉบับ';
     return '<!doctype html>'+doc.documentElement.outerHTML;
   }
-  async function annotatePdf(html,file,progress=()=>{}){
+  async function annotatePdf(html,file,progress=()=>{},{hoverOnly=false,pdfjs:pdfjsOverride,readPage=read}={}){
     const doc=new DOMParser().parseFromString(html,'text/html');
-    const candidates=[...doc.querySelectorAll('.correction-panel li')].map(li=>({wrong:li.querySelector('.correction-wrong')?.textContent.trim(),correct:li.querySelector('.correction-correct')?.textContent.trim()})).filter(c=>c.wrong&&c.correct);
-    const pdfjs=await import(new URL('vendor/pdfjs/pdf.mjs',document.baseURI).href);
+    const candidates=[...doc.querySelectorAll('.correction-panel li')].map(li=>({wrong:li.querySelector('.correction-wrong')?.textContent.trim(),correct:li.querySelector('.correction-correct')?.textContent.trim()})).filter(c=>c.wrong&&c.correct)
+      .map(c=>hoverOnly?correctionWordSpan(c.wrong,c.correct):c).filter(Boolean);
+    const pdfjs=pdfjsOverride || await import(new URL('vendor/pdfjs/pdf.mjs',document.baseURI).href);
     pdfjs.GlobalWorkerOptions.workerSrc=new URL('vendor/pdfjs/pdf.worker.mjs',document.baseURI).href;
     const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
     let count=0;
@@ -1197,6 +1210,11 @@
       const preview=doc.querySelector('.pdf-overlay-viewer');
       if(!preview)throw Error('ไม่พบพื้นที่แสดง PDF');
       preview.replaceChildren();doc.querySelectorAll('script').forEach(n=>n.remove());
+      if (hoverOnly) {
+        const hoverStyle = doc.createElement('style');
+        hoverStyle.textContent = '.document-hover-mark:hover::after,.document-hover-mark:focus::after{content:attr(data-correction);position:absolute;bottom:100%;left:0;z-index:20;background:#fff;color:#172033;border:1px solid #dc2626;border-radius:4px;padding:3px 7px;white-space:nowrap;font:16px/1.5 Arial,Tahoma,sans-serif}';
+        doc.head.append(hoverStyle);
+      }
       for(let n=1;n<=pdf.numPages;n++){
         progress('ตรวจตำแหน่งคำบน PDF หน้า '+n+'/'+pdf.numPages);
         const page=await pdf.getPage(n),viewport=page.getViewport({scale:2});
@@ -1204,17 +1222,19 @@
         const canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
         await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
         const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
-        const ocr=await read(blob),wrap=doc.createElement('div'),img=doc.createElement('img');
+        const ocr=await readPage(blob),wrap=doc.createElement('div'),img=doc.createElement('img');
         wrap.style.cssText='position:relative;width:100%;margin-bottom:16px;background:white';
+        if (hoverOnly) wrap.dataset.correctOnHover = 'true';
         img.src=canvas.toDataURL('image/png');img.alt='หน้า '+n;img.style.cssText='display:block;width:100%;height:auto';wrap.append(img);
         for(const c of candidates){
           // Locate each occurrence separately; never reuse a coordinate for another word.
           for(const row of ocr.lines){const match=locate([row],c.wrong);
-            if(match.box&&canMark(c.wrong,c.correct,match.line)){addOverlay(doc,wrap,match,ocr,c.wrong,c.correct);count++;}
+            if(match.box&&(hoverOnly||canMark(c.wrong,c.correct,match.line))){if(addOverlay(doc,wrap,match,ocr,c.wrong,c.correct))count++;}
           }
         }
         preview.append(wrap);canvas.width=canvas.height=0;page.cleanup();
       }
+      if (hoverOnly) doc.querySelector('.document-original-text')?.remove();
       doc.querySelectorAll('mark.wrong-word').forEach(n=>n.replaceWith(doc.createTextNode(n.textContent)));
       const summary=doc.querySelector('.summary-box');if(summary)summary.textContent='ปาดแดง '+count+' จุดที่ผ่านกฎสะกดและพิกัดภาพ';
       const panel=doc.querySelector('.correction-panel');if(panel){

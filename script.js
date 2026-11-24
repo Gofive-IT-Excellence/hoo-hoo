@@ -603,12 +603,12 @@ setProgress(browserOcr ? "กำลังส่งข้อความและ
         }
       } else if (effectiveMode === 'text-proofreader' && isPdfFile(fileA)) {
         try {
-          const checked = await HooHooWordLocator.annotatePdfLayout(html, fileA, setProgress);
+          const checked = await HooHooWordLocator.annotatePdf(html, fileA, setProgress, {hoverOnly:true});
           finalHtml = checked.html;
           needsReview = checked.count > 0;
         } catch (error) {
           const warning = document.createElement('p');
-          warning.textContent = 'ยังตรวจตำแหน่งสระบน PDF ไม่สำเร็จ: ' + error.message;
+          warning.textContent = 'ยังแสดงตำแหน่งคำบน PDF ไม่สำเร็จ: ' + error.message;
           finalHtml += warning.outerHTML;
           needsReview = true;
         }

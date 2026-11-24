@@ -531,3 +531,48 @@ test('nested-word filtering respects the source occurrence and preserves other n
   assert.equal(output.reviewCount,3);
   assert.equal(output.located,3);
 });
+
+test('document text keeps original words, hides the list, and exposes corrections only on hover/focus', async () => {
+  const originalFetch=global.fetch;
+  global.fetch=async url=>url==='/document/text'
+    ? {ok:true,json:async()=>({text:'พนักงน <script>\nพนักงน',regions:[row('พนักงน <script>',0),row('พนักงน',1)]})}
+    : {ok:true,status:200,json:async()=>({lines:[{id:0,corrections:[{wrong:'พนักงน',correct:'พนักงาน'}]},{id:1,corrections:[]}]})};
+  try {
+    const result=await audit.runDocument(new File(['test'],'test.txt'));
+    const doc=new DOMParser().parseFromString(result.html,'text/html');
+    assert.equal(doc.querySelector('pre').textContent,'พนักงน <script>\nพนักงน');
+    assert.equal(doc.querySelectorAll('.document-word').length,1);
+    assert.equal(doc.querySelector('.document-word').title,'พนักงาน');
+    assert.equal(doc.querySelector('.document-word').dataset.correction,'พนักงาน');
+    assert.equal(doc.querySelectorAll('script').length,0);
+    assert.match(doc.head.textContent,/\.correction-panel\{display:none!important\}/);
+    assert.match(doc.head.textContent,/\.document-word:hover::after/);
+    assert.equal(doc.querySelector('.correction-panel').style.getPropertyPriority('display'),'important');
+    assert.equal(doc.querySelector('.correction-panel').style.display,'none');
+  } finally {global.fetch=originalFetch;}
+});
+
+test('PDF document preview retains the page and renders red hover targets without permanent correction labels', async () => {
+  const dom=new JSDOM('',{url:'https://example.test/'}),previousDocument=global.document;
+  global.document=dom.window.document;
+  const proto=dom.window.HTMLCanvasElement.prototype;
+  proto.getContext=()=>({});proto.toBlob=fn=>fn(new Blob(['page']));proto.toDataURL=()=> 'data:image/png;base64,cGFnZQ==';
+  let destroyed=false;
+  const page={getViewport:()=>({width:500,height:200}),render:()=>({promise:Promise.resolve()}),cleanup:()=>{}};
+  const pdfjs={GlobalWorkerOptions:{},getDocument:()=>({promise:Promise.resolve({numPages:1,getPage:async()=>page,destroy:async()=>{destroyed=true;}})})};
+  const report={total:1,checked:1,unchecked:[],corrections:[{wrong:'พนักงน',correct:'พนักงาน',indices:[0]}]};
+  const input=audit.render(report,'').html.replace('<mark>','<mark class="correction-wrong">').replace('<b>','<b class="correction-correct">').replace('</body>','<pre class="document-original-text">พนักงน</pre><div class="pdf-overlay-viewer"></div></body>');
+  const text='พนักงน',r=region(text,30);
+  const ocr={width:500,height:200,lines:[{text,confidence:96,glyphs:r.characters.map(g=>({...g,text:text.slice(g.start,g.end)}))}]};
+  try {
+    const result=await locator.annotatePdf(input,new File(['pdf'],'test.pdf'),()=>{},{hoverOnly:true,pdfjs,readPage:async()=>ocr});
+    const doc=new DOMParser().parseFromString(result.html,'text/html');
+    assert.equal(result.count,1);
+    assert.equal(doc.querySelectorAll('.pdf-overlay-viewer img').length,1);
+    assert.equal(doc.querySelector('.document-original-text'),null);
+    assert.equal(doc.querySelectorAll('.verified-spelling-correction,.review-spelling-correction').length,0);
+    const mark=doc.querySelector('.document-hover-mark');
+    assert.equal(mark.title,'พนักงาน');assert.ok(parseFloat(mark.style.height)>0);
+    assert.equal(mark.dataset.correction,'พนักงาน');assert.ok(destroyed);
+  } finally {global.document=previousDocument;}
+});

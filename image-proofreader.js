@@ -165,6 +165,38 @@
     });
     return render(report, imageUrl);
   }
+  function markDocumentText(doc, payload, report) {
+    const original = doc.createElement('pre');
+    original.className = 'document-original-text';
+    original.style.cssText = 'white-space:pre-wrap;line-height:1.8;font:inherit';
+    const rows = payload.regions || [];
+    rows.forEach((row, index) => {
+      if (index) original.append(doc.createTextNode('\n'));
+      const matches = [];
+      for (const correction of report.corrections) {
+        if (Array.isArray(correction.indices) && !correction.indices.includes(index)) continue;
+        const {wrong, correct} = correction;
+        const start = row.text.indexOf(wrong);
+        if (start < 0 || row.text.indexOf(wrong, start + wrong.length) >= 0 || wrong === correct) continue;
+        matches.push({start, end:start + wrong.length, correct});
+      }
+      matches.sort((a,b) => a.start - b.start || b.end - a.end);
+      let cursor = 0;
+      for (const match of matches) {
+        if (match.start < cursor) continue;
+        original.append(doc.createTextNode(row.text.slice(cursor, match.start)));
+        const mark = doc.createElement('span'); mark.className = 'document-word';
+        mark.textContent = row.text.slice(match.start, match.end);
+        mark.title = match.correct; mark.dataset.correction = match.correct;
+        mark.tabIndex = 0; mark.setAttribute('aria-label', mark.textContent + ' → ' + match.correct);
+        original.append(mark); cursor = match.end;
+      }
+      original.append(doc.createTextNode(row.text.slice(cursor)));
+    });
+    if (!rows.length) original.textContent = payload.text;
+    return original;
+  }
+
   async function runDocument(file, {signal, onProgress} = {}) {
     const form = new FormData(); form.append('fileA', file);
     const response = await fetch('/document/text', {method:'POST', body:form,
@@ -175,10 +207,12 @@
     const result = render(report, '');
     const doc = new DOMParser().parseFromString(result.html, 'text/html');
     doc.querySelector('.wrapper').remove();
-    const original = doc.createElement('pre');
-    original.style.cssText = 'white-space:pre-wrap;line-height:1.8;font:inherit';
-    original.textContent = payload.text;
-    doc.body.append(original);
+    doc.body.classList.add('document-hover-view');
+    doc.querySelector('.correction-panel').setAttribute('style', 'display:none!important');
+    const style = doc.createElement('style');
+    style.textContent = '.correction-panel{display:none!important}.document-word{position:relative;background:transparent;text-decoration:line-through;text-decoration-color:#dc2626;text-decoration-thickness:2px;cursor:help}.document-word:hover::after,.document-word:focus::after{content:attr(data-correction);position:absolute;bottom:100%;left:0;z-index:10;background:#fff;color:#172033;border:1px solid #dc2626;border-radius:4px;padding:3px 7px;white-space:nowrap;text-decoration:none;font:16px/1.5 Arial,Tahoma,sans-serif}';
+    doc.head.append(style);
+    doc.body.append(markDocumentText(doc, payload, report));
     if (/\.pdf$/i.test(file.name)) {
       const preview = doc.createElement('div'); preview.className='pdf-overlay-viewer'; doc.body.append(preview);
     }
@@ -186,7 +220,7 @@
     doc.querySelectorAll('.correction-panel b').forEach(n=>n.className='correction-correct');
     return {...result, html:'<!doctype html>'+doc.documentElement.outerHTML};
   }
-  const api = {plan, parse, audit, render, run, runDocument};
+  const api = {plan, parse, audit, render, run, runDocument, markDocumentText};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.HooHooImageAudit = api;
 })(typeof window === 'undefined' ? globalThis : window);
