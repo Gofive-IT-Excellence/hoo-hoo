@@ -458,3 +458,21 @@ test('a correct การนำ at a different location cannot suppress a genuin
   assert.equal(output.located,1);
   assert.notEqual(locator.correctionWordSpan('น้ำ','นำ'),null,'normalisation must preserve real tone differences');
 });
+
+test('scoped and dictionary flood suggestions share one ink location and southern spelling stays markable', () => {
+  const text = 'ทวมภากไต้';
+  const report = {total:1,checked:1,unchecked:[],corrections:[
+    {wrong:'ทวม',correct:'ท่วม',indices:[0]},
+    {wrong:'ทวม',correct:'ท่วม'},
+    {wrong:'ภากไต้',correct:'ภาคใต้'},
+  ]};
+  const output = locator.reanchor(audit.render(report,'test.png').html.replaceAll(' data-ocr-region-indices="undefined"',''), {
+    width:500,height:200,lines:[],paddleRegions:[region(text,40)],
+  });
+  const doc = new DOMParser().parseFromString(output.html,'text/html');
+  assert.equal(doc.querySelectorAll('.review-spelling-correction,.verified-spelling-correction').length,2);
+  assert.equal(output.located,2);
+  assert.equal(output.unlocated,0);
+  assert.equal(doc.querySelectorAll('.correction-panel li').length,2);
+  assert.deepEqual(locator.correctionWordSpan('ภากไต้','ภาคใต้'),{wrong:'ภากไต้',correct:'ภาคใต้'});
+});

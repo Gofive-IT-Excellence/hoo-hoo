@@ -207,6 +207,8 @@
   function correctionWordSpan(wrong, correct) {
     if (!wrong || !correct || canonicalThaiReading(wrong) === canonicalThaiReading(correct) ||
         canonicalThaiReading(wrong).replace(/[\sๆ]/g, '') === canonicalThaiReading(correct).replace(/[\sๆ]/g, '')) return null;
+    // Trusted spelling pairs may contain several Thai dictionary segments.
+    if (clearPairs.get(wrong) === correct) return {wrong, correct};
     if (typeof Intl.Segmenter !== 'function') return null;
     let start = 0, oldEnd = wrong.length, newEnd = correct.length;
     while (start < Math.min(oldEnd, newEnd) && wrong[start] === correct[start]) start++;
@@ -939,6 +941,8 @@
       const source = scopeCorrection(ocr, li);
       const hits = locate(source.lines || [], wrong, true);
       const match = hits.length === 1 ? hits[0] : locateBest(source, wrong);
+      const primary = paddleRegionMatch(source, wrong);
+      if (!valid(match.box) && valid(primary?.wordBox)) match.box = primary.wordBox;
       if (!valid(match.box)) continue;
       const duplicate = positionedCorrections.find(entry => entry.correct === correct && sameInk(entry.box, match.box));
       const score = Math.abs(wrong.length - correct.length);
