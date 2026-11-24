@@ -6,3 +6,8 @@ Flask==3.1.3
 pypdfium2==5.8.0
 Pillow==12.2.0
 gunicorn==23.0.0
+
+# Official AksonOCR-Lite, fixed source revision (document mode only).
+aksonocr-lite @ https://github.com/Remtir/AksonOCR-Lite/archive/8f1f3d87d41e2b585354950767b9a9be678e0352.zip
+shapely==2.2.0
+huggingface-hub==2.4.0

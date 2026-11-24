@@ -42,3 +42,33 @@ Run `npm test` and `python3 -m unittest discover -s ocr-service -p 'test_*.py'`
 runs OCR and language model smoke tests with `--network none` using generated
 test data. Model quality benchmarks are small integration checks, not guarantees
 for every document, font or domain.
+
+
+## Document mode: AksonOCR-Lite
+
+`POST /document/text` uses the self-hosted **Remtir/AksonOCR-Lite** CPU pipeline
+for PDFs (including scanned PDFs) and uploaded images in document mode. The
+existing image-proofreading mode continues to use OpenThai. Word (`.doc`, `.docx`)
+and text files preserve their embedded text; they are not rasterized or rewritten
+by OCR. Extracted literal lines are passed to the existing local Qwen proofreader.
+
+The Docker build installs the official Akson code at
+`8f1f3d87d41e2b585354950767b9a9be678e0352` and bundles model revision
+`576fa7b148b628656eb6fb70917d3e8c488bab3d` under `/opt/akson-models`.
+`AKSONOCR_WEIGHTS` selects this offline directory; `AKSONOCR_THREADS=2` bounds
+CPU use. No upload is sent to aksonocr.com, and no Akson API key is required.
+Model/code license and notices are retained by the package and bundled weights.
+
+PDFs are limited to 20 pages per request, rejected before inference rather than
+silently truncated. Detected lines are ordered by layout blocks, including table
+text and otherwise unassigned headers/footers. Markdown/HTML formatting is not
+submitted as spelling content. This integration does not imply a 99% accuracy
+claim for the app or its spelling suggestions.
+
+Readiness: `GET /document/health` reports `engine: aksonocr-lite`, `device: cpu`,
+and the fixed model revision. `/document/text` responses identify `engine` as
+`aksonocr-lite` or `native-text`. `/ocr/health` also identifies the document engine.
+
+Validation: unit tests cover page limits, literal typed text, duplicate layout-line
+references, tables and reading order. The container workflow additionally reads a
+scanned two-page PDF through the HTTP endpoint with networking disabled.

@@ -1,4 +1,4 @@
-name: OpenThai OCR container check
+name: OCR and document container check
 on:
   push:
     branches: [main]
@@ -40,6 +40,8 @@ jobs:
           root = 'http://127.0.0.1:8080'
           health = json.load(urllib.request.urlopen(root + '/ocr/health', timeout=10))
           assert health['engine'] == 'openthai-ocr-text' and health['proofreading_ready'], health
+          document_health = json.load(urllib.request.urlopen(root + '/document/health', timeout=10))
+          assert document_health['engine'] == 'aksonocr-lite' and document_health['device'] == 'cpu', document_health
           html = urllib.request.urlopen(root).read().decode()
           assert 'ocr-word-locator-v2.js?v=' in html
           script = urllib.request.urlopen(root + '/script.js').read().decode()
@@ -58,6 +60,20 @@ jobs:
           assert (result['width'], result['height']) == (320, 160), result
           assert result['words'], result
           assert any(word['characters'] for word in result['words']), result
+          # Scanned two-page PDF: document mode must use Akson with no network.
+          pdf = io.BytesIO()
+          image2 = Image.new('RGB', (640, 320), 'white')
+          ImageDraw.Draw(image2).text((25, 90), 'SECOND PAGE', font=ImageFont.load_default(size=48), fill='black')
+          image.save(pdf, format='PDF', save_all=True, append_images=[image2])
+          boundary = 'hoo-document-test'
+          body = (f'--{boundary}\r\nContent-Disposition: form-data; name="fileA"; filename="scan.pdf"\r\nContent-Type: application/pdf\r\n\r\n'.encode()
+                  + pdf.getvalue() + f'\r\n--{boundary}--\r\n'.encode())
+          req = urllib.request.Request(root + '/document/text', data=body,
+              headers={'Content-Type': 'multipart/form-data; boundary=' + boundary})
+          parsed_document = json.load(urllib.request.urlopen(req, timeout=180))
+          assert parsed_document['engine'] == 'aksonocr-lite', parsed_document
+          assert 'HELM' in parsed_document['text'] and 'SECOND' in parsed_document['text'], parsed_document
+
           data = json.dumps({'lines': [{'id': 7, 'text': 'บริษัทเปิดรับสมัครพนักงนใหม่'}, {'id': 8, 'text': 'ได้ สินเชื่อ'}]}).encode()
           req = urllib.request.Request(root + '/proofread', data=data, headers={'Content-Type': 'application/json'})
           audit = json.load(urllib.request.urlopen(req, timeout=150))
