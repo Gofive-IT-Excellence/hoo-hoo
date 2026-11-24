@@ -73,6 +73,19 @@ class ProofreadingTests(unittest.TestCase):
             {'wrong': 'กาน', 'correct': 'กิจ'}]}]}, [{'id': 0, 'text': 'กำหนดกาน'}])
         self.assertEqual(result['unchecked'], [0])
 
+    def test_repetition_punctuation_and_spacing_are_not_spelling_errors(self):
+        for wrong, correct in [('อื่นๆ', 'อื่น ๆ'), ('อื่น', 'อื่นๆ'),
+                               ('อื่นๆ', 'อื่น'), ('ต่างๆ', 'ต่าง ๆ'), ('มาก', 'มากๆ')]:
+            with self.subTest(wrong=wrong, correct=correct):
+                result = validate_result({'lines': [{'id': 0, 'corrections': [
+                    {'wrong': wrong, 'correct': correct}]}]}, [{'id': 0, 'text': wrong}])
+                self.assertEqual(result, {'lines': [{'id': 0, 'corrections': []}], 'unchecked': []})
+
+    def test_genuine_spelling_error_with_repetition_mark_is_retained(self):
+        result = validate_result({'lines': [{'id': 0, 'corrections': [
+            {'wrong': 'อืนๆ', 'correct': 'อื่นๆ'}]}]}, [{'id': 0, 'text': 'อืนๆ'}])
+        self.assertEqual(result['lines'][0]['corrections'], [{'wrong': 'อืนๆ', 'correct': 'อื่นๆ'}])
+
     def test_invalid_and_oversized_requests(self):
         for rows in [[], [{'id': True, 'text': 'ข้อมูล'}],
                      [{'id': 0, 'text': 'ก' * 10001}],

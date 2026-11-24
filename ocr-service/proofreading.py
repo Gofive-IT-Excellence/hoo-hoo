@@ -147,7 +147,8 @@ def validate_result(result, lines):
                 continue
             if changes_valid_function_word(wrong, correct):
                 continue
-            if ''.join(wrong.split()) == ''.join(correct.split()):
+            # Repetition punctuation and its spacing are editorial style, not spelling.
+            if ''.join(wrong.split()).replace('ๆ', '') == ''.join(correct.split()).replace('ๆ', ''):
                 continue
             if not conservative_edit(wrong, correct) or introduced_repetition(source[index], wrong, correct):
                 invalid = True

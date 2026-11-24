@@ -204,7 +204,7 @@
   // corrected text's word boundaries, never the entire quoted OCR region.
   function correctionWordSpan(wrong, correct) {
     if (!wrong || !correct || wrong.normalize('NFC') === correct.normalize('NFC') ||
-        wrong.replace(/\s/g, '') === correct.replace(/\s/g, '')) return null;
+        wrong.replace(/[\sๆ]/g, '') === correct.replace(/[\sๆ]/g, '')) return null;
     if (typeof Intl.Segmenter !== 'function') return null;
     let start = 0, oldEnd = wrong.length, newEnd = correct.length;
     while (start < Math.min(oldEnd, newEnd) && wrong[start] === correct[start]) start++;
@@ -926,7 +926,7 @@
       if (changesValidFunctionWord(wrong, correct)) {li.remove();continue;}
       const span = correctionWordSpan(wrong, correct);
       if (!span) {
-        if (wrong.replace(/\s/g, '') === correct.replace(/\s/g, '')) li.remove();
+        if (wrong.replace(/[\sๆ]/g, '') === correct.replace(/[\sๆ]/g, '')) li.remove();
         else li.setAttribute('data-unresolved-word-span', 'true');
         continue;
       }

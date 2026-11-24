@@ -341,3 +341,34 @@ test('Google Vids product name survives model attempts to singularise Vids', () 
     if(text==='Google Vids') assert.equal(output.reviewCount,0);
   }
 });
+
+
+test('repetition mark and spacing style never become spelling corrections or image strikes', () => {
+  for (const [wrong,correct] of [
+    ['อื่นๆ','อื่น ๆ'], ['อื่น','อื่นๆ'], ['อื่นๆ','อื่น'],
+    ['ต่างๆ','ต่าง ๆ'], ['มาก','มากๆ'],
+    ['ข้อมูลส่วนบุคคลอื่นๆ','ข้อมูลส่วนบุคคลอื่น ๆ'],
+  ]) {
+    const text = 'ข้อมูลส่วนบุคคล'+wrong;
+    const rows = [{...row(text,0),index:0}];
+    const parsed = audit.parse({lines:[{id:0,corrections:[{wrong,correct}]}]},rows);
+    assert.deepEqual(parsed.corrections,[],wrong+' → '+correct);
+    assert.deepEqual(parsed.checked,[0]);
+    const report = {total:1,checked:1,unchecked:[],corrections:[{wrong,correct,indices:[0]}]};
+    const output = locator.reanchor(audit.render(report,'test.png').html,
+      {width:1000,height:200,lines:[],paddleRegions:[region(text,10)]});
+    assert.equal(output.reviewCount,0);
+    assert.equal(output.located,0);
+    assert.deepEqual(audit.parse(response(rows,[],suggestion(wrong,correct)),rows).corrections,[]);
+  }
+});
+
+test('real Thai spelling errors next to a repetition mark remain eligible', () => {
+  const rows = [{...row('อืนๆ',0),index:0}];
+  assert.deepEqual(audit.parse({lines:[{id:0,corrections:[{wrong:'อืนๆ',correct:'อื่นๆ'}]}]},rows).corrections,
+    [{wrong:'อืนๆ',correct:'อื่นๆ',indices:[0]}]);
+  const report = {total:1,checked:1,unchecked:[],corrections:[{wrong:'อืนๆ',correct:'อื่นๆ',indices:[0]}]};
+  const output = locator.reanchor(audit.render(report,'test.png').html,
+    {width:500,height:200,lines:[],paddleRegions:[region('อืนๆ',10)]});
+  assert.equal(output.located,1);
+});
