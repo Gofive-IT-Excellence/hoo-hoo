@@ -202,9 +202,11 @@
 
   // The model may quote a whole sentence around a one-letter edit. Use the
   // corrected text's word boundaries, never the entire quoted OCR region.
+  const canonicalThaiReading = text => String(text).normalize('NFC').replace(/ำ/g, 'ํา');
+
   function correctionWordSpan(wrong, correct) {
-    if (!wrong || !correct || wrong.normalize('NFC') === correct.normalize('NFC') ||
-        wrong.replace(/[\sๆ]/g, '') === correct.replace(/[\sๆ]/g, '')) return null;
+    if (!wrong || !correct || canonicalThaiReading(wrong) === canonicalThaiReading(correct) ||
+        canonicalThaiReading(wrong).replace(/[\sๆ]/g, '') === canonicalThaiReading(correct).replace(/[\sๆ]/g, '')) return null;
     if (typeof Intl.Segmenter !== 'function') return null;
     let start = 0, oldEnd = wrong.length, newEnd = correct.length;
     while (start < Math.min(oldEnd, newEnd) && wrong[start] === correct[start]) start++;
@@ -238,20 +240,39 @@
       /Prompt(?:เด็ด|ด็ด)/i.test(rows.map(row => row.text || '').join('').replace(/\s/g, '')));
   }
 
+  // Sara am can be one character (ำ) or nikhahit + sara aa (ํา).
+  // Compare equivalent readings while retaining each original glyph offset.
+  function equivalentReadingSpans(text, word) {
+    const offsets=[];let expanded='',offset=0;
+    for (const ch of text) {
+      const value=ch==='ำ'?'ํา':ch;
+      expanded+=value;
+      for(let i=0;i<value.length;i++)offsets.push({start:offset,end:offset+ch.length});
+      offset+=ch.length;
+    }
+    const needle=canonicalThaiReading(word),matches=[];
+    if(!needle)return matches;
+    let at=expanded.indexOf(needle);
+    while(at>=0){
+      const last=at+needle.length-1,start=offsets[at].start,end=offsets[last].end;
+      if((at===0||offsets[at-1].end<=start)&&
+          (last===offsets.length-1||offsets[last+1].start>=end)) matches.push({start,end});
+      at=expanded.indexOf(needle,at+needle.length);
+    }
+    return matches;
+  }
+
   function correctedReadingAtRegion(ocr, corrected, region) {
     if (!region || !corrected) return false;
     for (const row of [...(ocr.lines || []), ...(ocr.validationLines || [])]) {
       if (row.confidence < 85) continue;
-      let start = row.text.indexOf(corrected);
-      while (start >= 0) {
-        const end = start + corrected.length;
+      for (const {start,end} of equivalentReadingSpans(row.text,corrected)) {
         const glyphs = row.glyphs.filter(g => g.start < end && g.end > start);
         if (glyphs[0]?.start === start && glyphs.at(-1)?.end === end && completeLatinSpan(row.text,start,end)) {
           const box = union(glyphs.map(g => g.box));
           const target = valid(region.wordBox) ? region.wordBox : region.box;
           if (sameInk(box, target)) return true;
         }
-        start = row.text.indexOf(corrected, start + corrected.length);
       }
     }
     return false;
@@ -935,7 +956,7 @@
       if (changesValidFunctionWord(wrong, correct)) {li.remove();continue;}
       const span = correctionWordSpan(wrong, correct);
       if (!span) {
-        if (wrong.replace(/[\sๆ]/g, '') === correct.replace(/[\sๆ]/g, '')) li.remove();
+        if (canonicalThaiReading(wrong).replace(/[\sๆ]/g, '') === canonicalThaiReading(correct).replace(/[\sๆ]/g, '')) li.remove();
         else li.setAttribute('data-unresolved-word-span', 'true');
         continue;
       }

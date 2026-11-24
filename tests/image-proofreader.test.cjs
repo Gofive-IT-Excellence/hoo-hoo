@@ -411,3 +411,50 @@ test('tone recheck includes ink above first-pass OCR body boxes and maps the cor
     assert.deepEqual(result.confirmed,['อื่นๆ']);
   } finally {global.document=previous;}
 });
+
+
+test('equivalent composed and decomposed sara am are not spelling errors', () => {
+  for (const [wrong,correct] of [['การนํา','การนำ'],['การนำ','การนํา']]) {
+    const rows=[{...row(wrong,0),index:0}];
+    assert.deepEqual(audit.parse({lines:[{id:0,corrections:[{wrong,correct}]}]},rows).corrections,[]);
+    const report={total:1,checked:1,unchecked:[],corrections:[{wrong,correct,indices:[0]}]};
+    const output=locator.reanchor(audit.render(report,'test.png').html,
+      {width:500,height:200,lines:[],paddleRegions:[region(wrong,10)]});
+    assert.equal(output.reviewCount,0);
+    assert.equal(output.located,0);
+  }
+});
+
+test('correct การนำ read as การนํา suppresses the OCR การน้ำ suggestion at the same ink', () => {
+  const primary=region('การนําเสนอ',10);
+  const report={total:1,checked:1,unchecked:[],corrections:[{wrong:'การน้ำ',correct:'การนำ',indices:[0]}]};
+  const output=locator.reanchor(audit.render(report,'test.png').html,{
+    width:500,height:200,paddleRegions:[region('การน้ำเสนอ',10)],
+    lines:[{text:primary.text,confidence:92,glyphs:primary.characters}],
+  });
+  assert.equal(output.reviewCount,0);
+  assert.equal(output.located,0);
+});
+
+test('sara am reading matches retain source offsets when one glyph expands into two characters', () => {
+  const primary=region('การนำเสนอ',10);
+  const report={total:1,checked:1,unchecked:[],corrections:[{wrong:'การน้ำ',correct:'การนํา',indices:[0]}]};
+  const output=locator.reanchor(audit.render(report,'test.png').html,{
+    width:500,height:200,paddleRegions:[region('การน้ำเสนอ',10)],
+    lines:[{text:primary.text,confidence:92,glyphs:primary.characters}],
+  });
+  assert.equal(output.reviewCount,0);
+  assert.equal(output.located,0);
+});
+
+test('a correct การนำ at a different location cannot suppress a genuine การน้ำ typo', () => {
+  const primary=region('การนําเสนอ',10);
+  const report={total:2,checked:2,unchecked:[],corrections:[{wrong:'การน้ำ',correct:'การนำ',indices:[1]}]};
+  const output=locator.reanchor(audit.render(report,'test.png').html,{
+    width:500,height:200,paddleRegions:[region('การน้ำเสนอ',10),region('การน้ำเสนอ',100)],
+    lines:[{text:primary.text,confidence:92,glyphs:primary.characters}],
+  });
+  assert.equal(output.reviewCount,1);
+  assert.equal(output.located,1);
+  assert.notEqual(locator.correctionWordSpan('น้ำ','นำ'),null,'normalisation must preserve real tone differences');
+});

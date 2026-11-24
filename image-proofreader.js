@@ -1,7 +1,7 @@
 /* Audit OCR text in small contextual batches, preserving coverage and source occurrences. */
 (function (root) {
   'use strict';
-  const compact = value => String(value || '').normalize('NFC').replace(/\s/g, '');
+  const compact = value => String(value || '').normalize('NFC').replace(/ำ/g, 'ํา').replace(/\s/g, '');
   const spellingText = value => compact(value).replace(/ๆ/g, '');
   const validBox = b => Array.isArray(b) && b.length === 4 && b.every(Number.isFinite) &&
     b[0] >= 0 && b[1] >= 0 && b[2] <= 1000 && b[3] <= 1000 && b[2] > b[0] && b[3] > b[1];
