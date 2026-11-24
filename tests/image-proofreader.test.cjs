@@ -372,3 +372,42 @@ test('real Thai spelling errors next to a repetition mark remain eligible', () =
     {width:500,height:200,lines:[],paddleRegions:[region('อืนๆ',10)]});
   assert.equal(output.located,1);
 });
+
+
+test('a coordinate-matched crop reading of อื่นๆ suppresses the false OCR อืนๆ suggestion', () => {
+  const primary = region('ข้อมูลอื่นๆ',10);
+  // The first reading omits only mai-ek. A crop reading restores that printed mark.
+  const bad = region('ข้อมูลอืนๆ',10);
+  const goodStart = primary.text.indexOf('อื่นๆ'), badStart = bad.text.indexOf('อืนๆ');
+  const width = 'อืนๆ'.length*12;
+  primary.characters.slice(goodStart).forEach((g,i)=>{g.box=[10+badStart*12+i*width/5,10,10+badStart*12+(i+1)*width/5,30];});
+  const report = {total:1,checked:1,unchecked:[],corrections:[{wrong:'อืนๆ',correct:'อื่นๆ',indices:[0]}]};
+  const output = locator.reanchor(audit.render(report,'test.png').html, {
+    width:500,height:200,lines:[],paddleRegions:[bad],
+    validationLines:[{text:primary.text,confidence:95,glyphs:primary.characters}],
+  });
+  assert.equal(output.reviewCount,0);
+  assert.equal(output.located,0);
+});
+
+
+test('tone recheck includes ink above first-pass OCR body boxes and maps the correct reading back', async () => {
+  const previous = global.document;
+  let crop;
+  global.document = {createElement:()=>({width:0,height:0,getContext:()=>({drawImage:(_canvas,x,y,w,h)=>{crop=[x,y,x+w,y+h];}})})};
+  const text='อนๆ';
+  const source={text,confidence:94,glyphs:[
+    {start:0,end:1,box:[651,1198,669,1222]},
+    {start:1,end:2,box:[673,1198,692,1222]},
+    {start:2,end:3,box:[699,1198,716,1237]},
+  ]};
+  const worker={setParameters:async()=>{},recognize:async()=>({data:{blocks:[{paragraphs:[{lines:[{confidence:91,words:[{symbols:Array.from('อื่นๆ').map((text,i)=>({text,bbox:{x0:i*20,y0:10,x1:i*20+19,y1:50}}))}]}]}]}]}})};
+  try {
+    const result=await locator.refineThaiMarks(worker,{width:2482,height:3509},[source]);
+    assert.ok(crop[1]<=1177,'crop must include the existing upper mark at y=1177, not cut it off');
+    assert.equal(result.validationLines[0].text,'อื่นๆ');
+    assert.equal(result.validationLines[0].confidence,91);
+    assert.ok(result.validationLines[0].glyphs[0].box[1]>=crop[1]);
+    assert.deepEqual(result.confirmed,['อื่นๆ']);
+  } finally {global.document=previous;}
+});

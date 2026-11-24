@@ -571,11 +571,14 @@
     return proofs;
   }
   async function refineThaiMarks(worker,canvas,rows){
-    const refinedLines=[],pixelCorrections=[],confirmed=new Set();
+    const refinedLines=[],pixelCorrections=[],validationLines=[],confirmed=new Set();
     const checks=[
       {search:'รายละเอียด',wrong:'รายล่ะเอียด',mode:'7',scale:1},
       {search:'ทั้งหมด',wrong:'ทังหมด',mode:'7',scale:2},
       {search:'ใบแจ้งหนี',correct:'ใบแจ้งหนี้',mode:'13',scale:1},
+      // Small print can lose the existing mai-ek above อื in อื่นๆ.
+      // Re-read real pixels at larger size, never silently fix the OCR text.
+      ...['อืนๆ','อนๆ','อินๆ'].map(search=>({search,correct:'อื่นๆ',mode:'7',scale:3,upperPadding:1})),
       {search:'ฝรั่ง',wrong:'ฝรัง',mode:'7',scale:2},
       {search:'อย่าเชื่อ',wrong:'อยา',mode:'7',scale:2}
     ];
@@ -602,7 +605,7 @@
       }
 
       const lineLeft=Math.min(...row.glyphs.map(g=>g.box[0]));
-      const left=Math.max(0,Math.floor(Math.max(x-200,lineLeft)-pad)),top=Math.max(0,Math.floor(y-pad));
+      const left=Math.max(0,Math.floor(Math.max(x-200,lineLeft)-pad)),top=Math.max(0,Math.floor(y-Math.max(pad,(check.upperPadding||0)*(b-y))));
       const right=Math.min(canvas.width,Math.ceil(r+pad)),bottom=Math.min(canvas.height,Math.ceil(b+pad));
       const crop=document.createElement('canvas');
       crop.width=(right-left)*check.scale;crop.height=(bottom-top)*check.scale;
@@ -618,6 +621,11 @@
       crop.width=crop.height=0;
       if(check.correct){
         if(rescanned.some(row=>row.text.includes(check.correct)&&row.confidence>=70))confirmed.add(check.correct);
+        for (const next of rescanned.filter(row=>row.text.includes(check.correct)&&row.confidence>=85)) {
+          validationLines.push({...next,glyphs:next.glyphs.map(g=>({
+            ...g,box:g.box.map((v,i)=>v/check.scale+(i%2?top:left))
+          }))});
+        }
       }else{
         for(const row of rescanned){
           if(!row.text.includes(check.wrong)||row.confidence<80)continue;
@@ -627,7 +635,7 @@
         }
       }
     }
-    return {refinedLines,pixelCorrections,confirmed:[...confirmed]};
+    return {refinedLines,pixelCorrections,validationLines,confirmed:[...confirmed]};
   }
   async function read(file,progress=()=>{},signal){
     signal?.throwIfAborted();
@@ -819,7 +827,8 @@
       }
       const extra=await refineThaiMarks(worker,c,selected);
       extra.pixelCorrections.push(...posterMarkProofs(c,selected), ...penMarkProofs(c,selected), ...nueangMarkProofs(c,selected), ...daiMarkProofs(c,selected), ...thamMarkProofs(c,alternativeLines), ...thaoNanMarkProofs(c,selected));
-      return {width:im.width,height:im.height,lines:selected,alternativeLines,validationLines,...extra};
+      return {width:im.width,height:im.height,lines:selected,alternativeLines,...extra,
+        validationLines:[...validationLines,...extra.validationLines]};
     }finally{signal?.removeEventListener('abort',onAbort);im.close();await stopWorker();}
   }
   // Rebuild the result from data, not the backend's executable geometry script.
@@ -1242,7 +1251,7 @@ function pdfLowerVowelIssues(operatorList, OPS) {
     }finally{await pdf.destroy();}
   }
 
-  const api={correctionWordSpan,missingStackedTone,lines,locate,read,reanchor,renderLocal,preserveOriginal,canMark,annotatePdf,pdfLowerVowelIssues,annotatePdfLayout};
+  const api={refineThaiMarks,correctionWordSpan,missingStackedTone,lines,locate,read,reanchor,renderLocal,preserveOriginal,canMark,annotatePdf,pdfLowerVowelIssues,annotatePdfLayout};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   else root.HooHooWordLocator=api;
 })(typeof window==='undefined'?globalThis:window);
