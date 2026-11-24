@@ -7,7 +7,7 @@ const audit = require('../image-proofreader.js'), locator = require('../ocr-word
 const gold = require('./fixtures/new-work.json');
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hoo-new-work-'));
 const imagePath = path.join(directory, 'generated.png');
-const base = process.env.HOOHOO_TEST_BASE_URL || 'http://127.0.0.1:5059';
+const base = process.env.HOOHOO_TEST_BASE_URL || 'http://127.0.0.1:8080';
 const font = process.env.HOOHOO_TEST_FONT || '/System/Library/Fonts/Supplemental/Tahoma.ttf';
 execFileSync(process.env.HOOHOO_TEST_PYTHON || 'python3', ['-c', `
 from PIL import Image,ImageDraw,ImageFont
@@ -23,7 +23,7 @@ const rect = points => [Math.min(...points.map(p => p[0])), Math.min(...points.m
   const form = new FormData(); form.append('fileA', new Blob([fs.readFileSync(imagePath)], {type: 'image/png'}), 'synthetic.png');
   const ocrResponse = await fetch(base + '/ocr', {method: 'POST', body: form, signal: AbortSignal.timeout(180000)});
   assert.ok(ocrResponse.ok, 'OCR request must succeed'); const raw = await ocrResponse.json();
-  const payload = {version: 1, engine: 'paddleocr-th', width: raw.width, height: raw.height,
+  const payload = {version: 1, engine: 'openthai-ocr-text', width: raw.width, height: raw.height,
     regions: raw.words.map(w => ({text: w.text, bbox: rect(w.box).map((v, i) => Math.round(v / (i % 2 ? raw.height : raw.width) * 1000)), words: []}))};
   const report = await audit.audit(payload, async rows => {
     const response = await fetch(base + '/proofread', {method: 'POST', headers: {'Content-Type': 'application/json'},

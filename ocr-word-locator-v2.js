@@ -932,7 +932,11 @@
       }
       // Source and Code are valid technical words, not incomplete spellings.
       // Also ignore case-only styling changes; neither is a spelling error.
-      if (/^(source|code)$/i.test(span.wrong) || span.wrong.toLowerCase() === span.correct.toLowerCase()) {
+      const productRows = scopeCorrection(ocr,li);
+      const googleVids = /^vids$/i.test(span.wrong) &&
+        [...(productRows.paddleRegions || []), ...(productRows.lines || [])]
+          .some(row => /\b(?:Google|Goegle)\s*Vids\b/i.test(row.text));
+      if (googleVids || /^(source|code)$/i.test(span.wrong) || span.wrong.toLowerCase() === span.correct.toLowerCase()) {
         li.remove();continue;
       }
       mark.textContent = span.wrong;bold.textContent = span.correct;

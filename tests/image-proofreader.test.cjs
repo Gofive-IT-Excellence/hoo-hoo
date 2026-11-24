@@ -329,3 +329,15 @@ test('a correct English word read independently overrides a mistaken primary OCR
   assert.equal(output.reviewCount,0);
   assert.equal(output.located,0);
 });
+
+
+test('Google Vids product name survives model attempts to singularise Vids', () => {
+  for (const text of ['Google Vids','Goegle Vids']) {
+    const report = {total:1,checked:1,unchecked:[],corrections:[{wrong:'Vids',correct:'Vid',indices:[0]}]};
+    const output = locator.reanchor(audit.render(report,'test.png').html,
+      {width:500,height:200,lines:[],paddleRegions:[region(text,10)]});
+    const doc = new DOMParser().parseFromString(output.html,'text/html');
+    assert.ok(![...doc.querySelectorAll('.correction-panel mark')].some(mark=>mark.textContent==='Vids'));
+    if(text==='Google Vids') assert.equal(output.reviewCount,0);
+  }
+});

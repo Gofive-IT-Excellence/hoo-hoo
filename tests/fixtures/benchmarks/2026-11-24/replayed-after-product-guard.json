@@ -1,0 +1,135 @@
+{
+  "date": "2026-11-24T02:49:41.537Z",
+  "base": "https://hoo-hoo.go5.online",
+  "replayedFrom": "live-before-product-guard capture",
+  "fixture": "synthetic Latin labels; Ws is literal Latin, not Thai ฟรี",
+  "openthai": {
+    "seconds": null,
+    "rows": [
+      {
+        "expected": "Goegle Vids",
+        "read": "Goegle Vids",
+        "exact": true,
+        "characterErrors": 0,
+        "bboxIoU": 0.7799303484662067,
+        "missed": false
+      },
+      {
+        "expected": "Nano Banano",
+        "read": "Nano Banano",
+        "exact": true,
+        "characterErrors": 0,
+        "bboxIoU": 0.6974072016137798,
+        "missed": false
+      },
+      {
+        "expected": "Ws",
+        "read": "WS",
+        "exact": false,
+        "characterErrors": 1,
+        "bboxIoU": 0.5066503871981847,
+        "missed": false
+      },
+      {
+        "expected": "Google Vids",
+        "read": "Google Vids",
+        "exact": true,
+        "characterErrors": 0,
+        "bboxIoU": 0.7859638633008837,
+        "missed": false
+      },
+      {
+        "expected": "Nano Banana",
+        "read": "Nano Banana",
+        "exact": true,
+        "characterErrors": 0,
+        "bboxIoU": 0.6424666703854521,
+        "missed": false
+      },
+      {
+        "expected": "Source Code",
+        "read": "Source Code",
+        "exact": true,
+        "characterErrors": 0,
+        "bboxIoU": 0.6421232876712332,
+        "missed": false
+      }
+    ]
+  },
+  "tesseractReference": {
+    "seconds": 0.109,
+    "version": "tesseract 5.5.3",
+    "note": "Reference only; not the previous PaddleOCR production engine",
+    "rows": [
+      {
+        "expected": "Goegle Vids",
+        "read": "Goegle Vids",
+        "exact": true,
+        "characterErrors": 0,
+        "bboxIoU": 0.9957983193277311,
+        "missed": false
+      },
+      {
+        "expected": "Nano Banano",
+        "read": "Nano Banano",
+        "exact": true,
+        "characterErrors": 0,
+        "bboxIoU": 0.9852941176470589,
+        "missed": false
+      },
+      {
+        "expected": "Ws",
+        "read": "Ws",
+        "exact": true,
+        "characterErrors": 0,
+        "bboxIoU": 0.967741935483871,
+        "missed": false
+      },
+      {
+        "expected": "Google Vids",
+        "read": "Google Vids",
+        "exact": true,
+        "characterErrors": 0,
+        "bboxIoU": 0.99581589958159,
+        "missed": false
+      },
+      {
+        "expected": "Nano Banana",
+        "read": "Nano Banana",
+        "exact": true,
+        "characterErrors": 0,
+        "bboxIoU": 0.977859778597786,
+        "missed": false
+      },
+      {
+        "expected": "Source Code",
+        "read": "Source Code",
+        "exact": true,
+        "characterErrors": 0,
+        "bboxIoU": 0.9882352941176471,
+        "missed": false
+      }
+    ]
+  },
+  "proofreading": {
+    "checked": 6,
+    "total": 6,
+    "unchecked": [],
+    "suggestions": [
+      {
+        "wrong": "Goegle",
+        "correct": "Google",
+        "note": "Goegle → Google — ตำแหน่งคำ โปรดตรวจทาน"
+      },
+      {
+        "wrong": "Banano",
+        "correct": "Banana",
+        "note": "Banano → Banana — ตำแหน่งคำ โปรดตรวจทาน"
+      }
+    ],
+    "falseCorrections": [],
+    "located": 2,
+    "unlocated": 0
+  },
+  "previousProductionBaseline": null
+}
