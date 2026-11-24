@@ -1201,10 +1201,10 @@
     const doc=new DOMParser().parseFromString(html,'text/html');
     const candidates=[...doc.querySelectorAll('.correction-panel li')].map(li=>({wrong:li.querySelector('.correction-wrong')?.textContent.trim(),correct:li.querySelector('.correction-correct')?.textContent.trim()})).filter(c=>c.wrong&&c.correct)
       .map(c=>hoverOnly?correctionWordSpan(c.wrong,c.correct):c).filter(Boolean);
-    const pdfjs=pdfjsOverride || await import(new URL('vendor/pdfjs/pdf.mjs',document.baseURI).href);
-    pdfjs.GlobalWorkerOptions.workerSrc=new URL('vendor/pdfjs/pdf.worker.mjs',document.baseURI).href;
+    const pdfjs=pdfjsOverride || await import(new URL('vendor/pdfjs/pdf.mjs?v=20261124-pdf-view',document.baseURI).href);
+    pdfjs.GlobalWorkerOptions.workerSrc=new URL('vendor/pdfjs/pdf.worker.mjs?v=20261124-pdf-view',document.baseURI).href;
     const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
-    let count=0;
+    let count=0;const unreadPages=[];
     try{
       if(pdf.numPages>20)throw Error('PDF เกิน 20 หน้า: ยังไม่ได้ยืนยันพิกัดคำ กรุณาแบ่งไฟล์');
       const preview=doc.querySelector('.pdf-overlay-viewer');
@@ -1222,10 +1222,13 @@
         const canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
         await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
         const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
-        const ocr=await readPage(blob),wrap=doc.createElement('div'),img=doc.createElement('img');
+        const wrap=doc.createElement('div'),img=doc.createElement('img');
         wrap.style.cssText='position:relative;width:100%;margin-bottom:16px;background:white';
         if (hoverOnly) wrap.dataset.correctOnHover = 'true';
         img.src=canvas.toDataURL('image/png');img.alt='หน้า '+n;img.style.cssText='display:block;width:100%;height:auto';wrap.append(img);
+        let ocr;
+        try { ocr = await readPage(blob); }
+        catch { unreadPages.push(n);ocr = {width:canvas.width,height:canvas.height,lines:[]}; }
         for(const c of candidates){
           // Locate each occurrence separately; never reuse a coordinate for another word.
           for(const row of ocr.lines){const match=locate([row],c.wrong);
@@ -1233,6 +1236,9 @@
           }
         }
         preview.append(wrap);canvas.width=canvas.height=0;page.cleanup();
+      }
+      if (unreadPages.length) {
+        const note=doc.createElement('p');note.textContent='แสดง PDF ต้นฉบับแล้ว แต่ยังยืนยันพิกัดคำไม่ได้ในหน้า '+unreadPages.join(', ');preview.before(note);
       }
       if (hoverOnly) doc.querySelector('.document-original-text')?.remove();
       doc.querySelectorAll('mark.wrong-word').forEach(n=>n.replaceWith(doc.createTextNode(n.textContent)));
@@ -1289,8 +1295,8 @@ function pdfLowerVowelIssues(operatorList, OPS) {
 
   async function annotatePdfLayout(html,file,progress=()=>{}) {
     const doc=new DOMParser().parseFromString(html,'text/html');
-    const pdfjs=await import(new URL('vendor/pdfjs/pdf.mjs',document.baseURI).href);
-    pdfjs.GlobalWorkerOptions.workerSrc=new URL('vendor/pdfjs/pdf.worker.mjs',document.baseURI).href;
+    const pdfjs=await import(new URL('vendor/pdfjs/pdf.mjs?v=20261124-pdf-view',document.baseURI).href);
+    pdfjs.GlobalWorkerOptions.workerSrc=new URL('vendor/pdfjs/pdf.worker.mjs?v=20261124-pdf-view',document.baseURI).href;
     const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
     const pages=[];let count=0;
     try {

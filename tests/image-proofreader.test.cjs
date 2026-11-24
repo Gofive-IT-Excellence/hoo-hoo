@@ -574,5 +574,28 @@ test('PDF document preview retains the page and renders red hover targets withou
     const mark=doc.querySelector('.document-hover-mark');
     assert.equal(mark.title,'พนักงาน');assert.ok(parseFloat(mark.style.height)>0);
     assert.equal(mark.dataset.correction,'พนักงาน');assert.ok(destroyed);
+    const fallback=await locator.annotatePdf(input,new File(['pdf'],'test.pdf'),()=>{},
+      {hoverOnly:true,pdfjs,readPage:async()=>{throw Error('OCR unavailable');}});
+    const fallbackDoc=new DOMParser().parseFromString(fallback.html,'text/html');
+    assert.equal(fallbackDoc.querySelectorAll('.pdf-overlay-viewer img').length,1);
+    assert.equal(fallbackDoc.querySelector('.document-original-text'),null);
+    assert.match(fallbackDoc.body.textContent,/ยังยืนยันพิกัดคำไม่ได้/);
+
   } finally {global.document=previousDocument;}
+});
+
+test('PDF extraction always retains an original PDF viewer rather than a flattened text fallback', async () => {
+  const originalFetch=global.fetch;
+  global.fetch=async url=>url==='/document/text'
+    ? {ok:true,json:async()=>({text:'ข้อความจาก OCR',regions:[row('ข้อความจาก OCR',0)]})}
+    : {ok:true,status:200,json:async()=>({lines:[{id:0,corrections:[]}]})};
+  try {
+    const result=await audit.runDocument(new File(['%PDF-fixture'],'source.pdf',{type:'application/pdf'}));
+    const doc=new DOMParser().parseFromString(result.html,'text/html');
+    assert.equal(doc.querySelector('.document-original-text'),null);
+    assert.equal(doc.querySelector('pre'),null);
+    const pdf=doc.querySelector('.pdf-overlay-viewer object');
+    assert.equal(pdf.type,'application/pdf');
+    assert.equal(atob(pdf.getAttribute('data').split(',')[1]),'%PDF-fixture');
+  } finally {global.fetch=originalFetch;}
 });

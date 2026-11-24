@@ -44,6 +44,10 @@ jobs:
           assert document_health['engine'] == 'aksonocr-lite' and document_health['device'] == 'cpu', document_health
           html = urllib.request.urlopen(root).read().decode()
           assert 'ocr-word-locator-v2.js?v=' in html
+          for module in ('pdf.mjs', 'pdf.worker.mjs'):
+              with urllib.request.urlopen(root + '/vendor/pdfjs/' + module) as response:
+                  assert response.headers.get_content_type() in ('application/javascript', 'text/javascript'), dict(response.headers)
+
           script = urllib.request.urlopen(root + '/script.js').read().decode()
           assert 'readPaddleImage' in script
           auditor = urllib.request.urlopen(root + '/image-proofreader.js').read().decode()

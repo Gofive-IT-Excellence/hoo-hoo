@@ -212,10 +212,16 @@
     const style = doc.createElement('style');
     style.textContent = '.correction-panel{display:none!important}.document-word{position:relative;background:transparent;text-decoration:line-through;text-decoration-color:#dc2626;text-decoration-thickness:2px;cursor:help}.document-word:hover::after,.document-word:focus::after{content:attr(data-correction);position:absolute;bottom:100%;left:0;z-index:10;background:#fff;color:#172033;border:1px solid #dc2626;border-radius:4px;padding:3px 7px;white-space:nowrap;text-decoration:none;font:16px/1.5 Arial,Tahoma,sans-serif}';
     doc.head.append(style);
-    doc.body.append(markDocumentText(doc, payload, report));
-    if (/\.pdf$/i.test(file.name)) {
-      const preview = doc.createElement('div'); preview.className='pdf-overlay-viewer'; doc.body.append(preview);
-    }
+    if (/\.pdf$/i.test(file.name) || /pdf/i.test(file.type)) {
+      const preview = doc.createElement('div'); preview.className='pdf-overlay-viewer';
+      const bytes = new Uint8Array(await file.arrayBuffer()); let binary = '';
+      for (let at=0;at<bytes.length;at+=8192) binary += String.fromCharCode(...bytes.subarray(at,at+8192));
+      const original = doc.createElement('object');
+      original.type = 'application/pdf'; original.data = 'data:application/pdf;base64,' + btoa(binary);
+      original.setAttribute('aria-label', 'เอกสาร PDF ต้นฉบับ');
+      original.style.cssText = 'display:block;width:100%;height:85vh;min-height:650px';
+      preview.append(original); doc.body.append(preview);
+    } else doc.body.append(markDocumentText(doc, payload, report));
     doc.querySelectorAll('.correction-panel mark').forEach(n=>n.className='correction-wrong');
     doc.querySelectorAll('.correction-panel b').forEach(n=>n.className='correction-correct');
     return {...result, html:'<!doctype html>'+doc.documentElement.outerHTML};
