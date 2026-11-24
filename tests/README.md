@@ -42,3 +42,10 @@ annotation changes without generating new model answers. Replay output is labell
 do not report it as a fresh live inference result. The actual poster's Thai ฟร!
 can be OCR-transcribed as Ws/WS; a literal Latin Ws in this fixture is a correct
 control and must not automatically be changed to ฟรี.
+
+For visual QA, serve the output folder on localhost and open
+`browser-preview.html`. It replays the captured audit report through the actual
+browser renderer, preserving CSS `cqw`, `max()` and `clamp()` styles. The static
+`result.html` serialization produced by jsdom is useful for text inspection but
+its older CSS parser can drop modern positioning styles; do not use it alone
+to assess visual alignment.

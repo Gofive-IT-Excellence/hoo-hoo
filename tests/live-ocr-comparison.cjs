@@ -32,7 +32,13 @@ const audit=require(path.join(root,'image-proofreader.js')),locator=require(path
 (async()=>{let batch=0;const regions=ocr.data.words.map(w=>({text:w.text,bbox:rect(w.box).map((v,i)=>v/(i%2?ocr.data.height:ocr.data.width)*1000)}));
 const report=await audit.audit({regions},async rows=>request('/proofread',{lines:rows.map(r=>({id:r.index,text:r.text}))},'proofread-'+batch++).data);
 const located=locator.reanchor(audit.render(report,'synthetic.png').html,{width:ocr.data.width,height:ocr.data.height,lines:[],paddleRegions:ocr.data.words.map(w=>({text:w.text,box:rect(w.box),characters:w.characters.map(c=>({...c,box:rect(c.box)}))}))});
-fs.writeFileSync(path.join(out,'result.html'),located.html);
+fs.writeFileSync(path.join(out,'result.html'),located.html.replace('<head>','<head><meta charset="utf-8">'));
+// Re-render in a real browser as well: jsdom's CSS parser cannot preserve all
+// modern cqw/max/clamp styles used by the live overlay renderer.
+fs.writeFileSync(path.join(out,'browser-data.json'),JSON.stringify({report,ocr:{width:ocr.data.width,height:ocr.data.height,lines:[],paddleRegions:ocr.data.words.map(w=>({text:w.text,box:rect(w.box),characters:w.characters.map(c=>({...c,box:rect(c.box)}))}))}}));
+for(const name of ['image-proofreader.js','ocr-word-locator-v2.js'])fs.copyFileSync(path.join(root,name),path.join(out,name));
+fs.writeFileSync(path.join(out,'browser-preview.html'),'<!doctype html><meta charset="utf-8"><script src="image-proofreader.js"></script><script src="ocr-word-locator-v2.js"></script><script>fetch("browser-data.json").then(r=>r.json()).then(d=>{const html=HooHooWordLocator.reanchor(HooHooImageAudit.render(d.report,"synthetic.png").html,d.ocr).html;document.open();document.write(html.replace("<head>","<head><meta charset=utf-8>"));document.close();});</script>');
+
 const doc=new DOMParser().parseFromString(located.html,'text/html');const suggestions=[...doc.querySelectorAll('.correction-panel li')].map(li=>({wrong:li.querySelector('mark')?.textContent,correct:li.querySelector('b')?.textContent,note:li.textContent}));
 const correctControls=gold.slice(2).map(g=>g.text);
 const falseCorrections=suggestions.filter(s=>correctControls.some(text=>normal(text).includes(normal(s.wrong||''))));
