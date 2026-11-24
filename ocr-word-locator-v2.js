@@ -103,7 +103,12 @@
     if(original==='นบ'&&corrected==='นับ')return /นบ(?:จำนวน|ความถี่|ครั้ง)/.test(line);
     return false;
   }
+  const paintedCorrections = new WeakMap();
   function addOverlay(doc,wrapper,match,ocr,original,corrected,verified=true){
+    const painted = paintedCorrections.get(wrapper) || [];
+    if (painted.some(item => item.correct === corrected && sameInk(item.box, match.box))) return false;
+    painted.push({correct:corrected, box:match.box});
+    paintedCorrections.set(wrapper, painted);
     const [x,y,r,b]=match.box,mark=doc.createElement('div'),label=doc.createElement('div');
     const middle=Math.min(b,Math.max(y,match.strikeY??(y+b)/2));
     const color=verified?'#dc2626':'#b45309';
@@ -139,6 +144,7 @@
       ? (b+gap)/ocr.height*100+'%'
       : 'max('+Math.max(0,y-gap)/ocr.height*100+'%, clamp(10.35px,'+(Number(labelSize)*1.15)+'cqw,18.4px))';
     wrapper.append(mark,label);
+    return true;
   }
   // Latin OCR tokens need complete letter boundaries too: Sourc is not
   // a separate word inside Source. Keep CamelCase label boundaries usable.
@@ -285,7 +291,7 @@
     const placement = wordLocated ? wordMatch : valid(region.wordBox)
       ? {box:region.wordBox, line:region.text} : null;
     if (!placement) return null;
-    addOverlay(doc, wrapper, placement, ocr, original, corrected, false);
+    if (!addOverlay(doc, wrapper, placement, ocr, original, corrected, false)) return 'duplicate';
     const label = wrapper.lastElementChild;
     const mark = label.previousElementSibling;
     const scope = 'ตำแหน่งระดับคำ';
@@ -1036,6 +1042,7 @@
           }
         }
         const wordLocated = addPaddleReview(doc, wrapper, paddleRegion, ocr, original, corrected, match);
+        if (wordLocated === 'duplicate') {li.remove();continue;}
         const note = doc.createElement('span');
         note.textContent = wordLocated ? ' — ตำแหน่งคำ โปรดตรวจทาน' : ' — ยังแยกตำแหน่งคำไม่ได้';
         li.append(note);
@@ -1045,6 +1052,7 @@
       if(!match.box&&!matches.length){
         const note=doc.createElement('span');note.textContent=match.reason==='ambiguous'?' — OCR พบหลายตำแหน่ง โปรดตรวจทาน':' — ยังยืนยันตำแหน่งไม่ได้';li.append(note);unlocated++;continue;
       }
+      let painted = 0, duplicates = 0;
       for(const hit of matches.length?matches:[match]){
         const reading=hit.pixelVerified?'agreed':checkedReading(ocr,original,hit);
         if(reading==='contradicted'&&!canMark(original,corrected,hit.line)){li.remove();break;}
@@ -1053,9 +1061,10 @@
           continue;
         }
         const verified=hit.pixelVerified||hit.verification!=='review'&&canMark(original,corrected,hit.line);
-        addOverlay(doc,wrapper,hit,ocr,original,corrected,verified);
-        located++;if(verified)verifiedCount++;
+        if (!addOverlay(doc,wrapper,hit,ocr,original,corrected,verified)) {duplicates++;continue;}
+        painted++;located++;if(verified)verifiedCount++;
       }
+      if (duplicates && !painted && !li.querySelector('.reading-note')) li.remove();
     }
     const count=panel.querySelectorAll('li').length;
     if (incompleteCoverage && count === 0) {

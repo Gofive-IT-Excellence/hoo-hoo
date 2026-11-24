@@ -476,3 +476,30 @@ test('scoped and dictionary flood suggestions share one ink location and souther
   assert.equal(doc.querySelectorAll('.correction-panel li').length,2);
   assert.deepEqual(locator.correctionWordSpan('ภากไต้','ภาคใต้'),{wrong:'ภากไต้',correct:'ภาคใต้'});
 });
+
+test('rendering merges repeated OCR hits and scoped suggestions at the same printed ทวม', () => {
+  const text='น้ำทวมภากไต้';
+  const source=region(text,260);
+  const glyphs=source.characters.map(g=>({text:text.slice(g.start,g.end),box:g.box}));
+  const line={text,confidence:96,glyphs};
+  const report={total:1,checked:1,unchecked:[],corrections:[{wrong:'น้ำทวม',correct:'น้ำท่วม',indices:[0]}]};
+  const html=audit.render(report,'test.png').html.replace('</ul>',suggestion('ทวม','ท่วม')+'</ul>');
+  const output=locator.reanchor(html,{width:928,height:514,lines:[line,{...line}],paddleRegions:[source]});
+  const doc=new DOMParser().parseFromString(output.html,'text/html');
+  const labels=[...doc.querySelectorAll('.verified-spelling-correction,.review-spelling-correction')];
+  assert.equal(labels.filter(n=>n.textContent==='→ ท่วม').length,1);
+  assert.equal(labels.filter(n=>n.textContent==='→ ภาคใต้').length,1);
+  assert.equal(output.located,2);
+  assert.equal(output.unlocated,0);
+  assert.equal(doc.querySelectorAll('.correction-panel li').length,2);
+});
+
+test('render deduplication retains ท่วม labels at genuinely different positions', () => {
+  const first=region('ทวม',30),second=region('ทวม',130);
+  const line=r=>({text:r.text,confidence:96,glyphs:r.characters.map(g=>({text:r.text.slice(g.start,g.end),box:g.box}))});
+  const report={total:2,checked:2,unchecked:[],corrections:[{wrong:'ทวม',correct:'ท่วม',indices:[0]},{wrong:'ทวม',correct:'ท่วม',indices:[1]}]};
+  const output=locator.reanchor(audit.render(report,'test.png').html,{width:500,height:250,lines:[line(first),line(second)],paddleRegions:[first,second]});
+  const doc=new DOMParser().parseFromString(output.html,'text/html');
+  assert.equal(doc.querySelectorAll('.verified-spelling-correction,.review-spelling-correction').length,2);
+  assert.equal(output.located,2);
+});
