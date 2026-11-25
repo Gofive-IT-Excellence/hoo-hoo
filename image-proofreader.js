@@ -210,7 +210,7 @@
     doc.body.classList.add('document-hover-view');
     doc.querySelector('.correction-panel').setAttribute('style', 'display:none!important');
     const style = doc.createElement('style');
-    style.textContent = '.correction-panel{display:none!important}.document-word{position:relative;background:transparent;text-decoration:line-through;text-decoration-color:#dc2626;text-decoration-thickness:2px;cursor:help}.document-word:hover::after,.document-word:focus::after{content:attr(data-correction);position:absolute;bottom:100%;left:0;z-index:10;background:#fff;color:#172033;border:1px solid #dc2626;border-radius:4px;padding:3px 7px;white-space:nowrap;text-decoration:none;font:16px/1.5 Arial,Tahoma,sans-serif}';
+    style.textContent = '.correction-panel{display:none!important}.document-word{position:relative;background:rgba(239,68,68,.28);text-decoration:none;border-radius:2px;cursor:help}.document-word:hover::after,.document-word:focus::after{content:attr(data-correction);position:absolute;bottom:100%;left:0;z-index:10;background:#fff;color:#172033;border:1px solid #dc2626;border-radius:4px;padding:3px 7px;white-space:nowrap;text-decoration:none;font:16px/1.5 Arial,Tahoma,sans-serif}';
     doc.head.append(style);
     if (/\.pdf$/i.test(file.name) || /pdf/i.test(file.type)) {
       const preview = doc.createElement('div'); preview.className='pdf-overlay-viewer';

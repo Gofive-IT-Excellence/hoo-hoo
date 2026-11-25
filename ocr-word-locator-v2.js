@@ -150,7 +150,8 @@
       mark.style.top = y/ocr.height*100+'%';
       mark.style.height = (b-y)/ocr.height*100+'%';
       mark.style.borderTop = '0';
-      mark.style.background = 'linear-gradient(transparent calc(50% - 1px), #dc2626 calc(50% - 1px), #dc2626 calc(50% + 1px), transparent calc(50% + 1px))';
+      mark.style.background = 'rgba(239,68,68,0.28)';
+      mark.style.borderRadius = '2px';
       mark.style.cursor = 'help';
       wrapper.append(mark);
       return true;
