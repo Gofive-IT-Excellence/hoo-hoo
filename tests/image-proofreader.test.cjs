@@ -648,3 +648,18 @@ test('correct รายละเอียด and ทั้งหมด do not ga
   });
   assert.equal(out.located,0);assert.equal(out.reviewCount,0);
 });
+
+
+test('correct นามสกุล form label is never converted into a spelling correction', () => {
+  for (const wrong of ['นามสกุล','นามสกุล.','...นามสกุล...']) {
+    for (const correct of ['นานสกุล','นามสกุล:']) {
+      assert.equal(locator.correctionWordSpan(wrong,correct),null);
+      const rows=[{...row(wrong,0),index:0}];
+      assert.deepEqual(audit.parse({lines:[{id:0,corrections:[{wrong,correct}]}]},rows).corrections,[]);
+      assert.deepEqual(audit.parse(response(rows,[],suggestion(wrong,correct)),rows).corrections,[]);
+    }
+  }
+  const wrong='นานสกุล',correct='นามสกุล';
+  assert.deepEqual(locator.correctionWordSpan(wrong,correct),{wrong,correct});
+  assert.equal(audit.parse({lines:[{id:0,corrections:[{wrong,correct}]}]},[{...row(wrong,0),index:0}]).corrections.length,1);
+});

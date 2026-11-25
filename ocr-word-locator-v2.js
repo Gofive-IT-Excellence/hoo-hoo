@@ -257,7 +257,8 @@
   const canonicalThaiReading = text => String(text).normalize('NFC').replace(/ำ/g, 'ํา');
 
   function correctionWordSpan(wrong, correct) {
-    if (!wrong || !correct || canonicalThaiReading(wrong) === canonicalThaiReading(correct) ||
+    if (!wrong || !correct || canonicalThaiReading(wrong).replace(/[\sๆ\p{P}]/gu, '') === 'นามสกุล' ||
+        canonicalThaiReading(wrong) === canonicalThaiReading(correct) ||
         canonicalThaiReading(wrong).replace(/[\sๆ\p{P}]/gu, '') === canonicalThaiReading(correct).replace(/[\sๆ\p{P}]/gu, '')) return null;
     // Trusted spelling pairs may contain several Thai dictionary segments.
     if (clearPairs.get(wrong) === correct) return {wrong, correct};

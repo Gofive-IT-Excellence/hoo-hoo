@@ -3,6 +3,8 @@
   'use strict';
   const compact = value => String(value || '').normalize('NFC').replace(/ำ/g, 'ํา').replace(/\s/g, '');
   const spellingText = value => compact(value).replace(/[ๆ\p{P}]/gu, '');
+  // Correct form labels must not become model-generated spelling edits.
+  const protectedSpelling = value => spellingText(value) === 'นามสกุล';
   const validBox = b => Array.isArray(b) && b.length === 4 && b.every(Number.isFinite) &&
     b[0] >= 0 && b[1] >= 0 && b[2] <= 1000 && b[3] <= 1000 && b[2] > b[0] && b[3] > b[1];
 
@@ -38,7 +40,7 @@
               !row.text.includes(wrong) || wrong.length > 100 || correct.length > 100) { valid = false; continue; }
           const starts = [...row.text.matchAll(new RegExp(wrong.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gu'))].map(match => match.index);
           if (!starts.some(start => !/^[\p{M}]/u.test(row.text.slice(start + wrong.length)))) continue;
-          if (spellingText(wrong) !== spellingText(correct)) accepted.push({wrong, correct, indices: [row.index]});
+          if (!protectedSpelling(wrong) && spellingText(wrong) !== spellingText(correct)) accepted.push({wrong, correct, indices: [row.index]});
         }
         if (valid) { checked.push(row.index); corrections.push(...accepted); }
       }
@@ -50,7 +52,7 @@
     for (const li of doc.querySelectorAll('.correction-panel li')) {
       const wrong = li.querySelector('mark')?.textContent.trim();
       const correct = li.querySelector('b')?.textContent.trim();
-      if (!wrong || !correct || spellingText(wrong) === spellingText(correct)) continue;
+      if (!wrong || !correct || protectedSpelling(wrong) || spellingText(wrong) === spellingText(correct)) continue;
       // A model cannot invent a source word or place a crop's correction elsewhere.
       const indices = rows.filter(row => compact(row.text).includes(compact(wrong))).map(row => row.index);
       if (indices.length) corrections.push({wrong, correct, indices});
