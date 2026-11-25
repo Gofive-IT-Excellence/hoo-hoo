@@ -652,6 +652,7 @@
     const checks=[
       {search:'รายละเอียด',wrong:'รายล่ะเอียด',mode:'7',scale:1},
       {search:'ทั้งหมด',wrong:'ทังหมด',mode:'7',scale:2},
+      {search:'รถอยนต',wrong:'รถยนต',mode:'7',scale:3},
       {search:'ใบแจ้งหนี',correct:'ใบแจ้งหนี้',mode:'13',scale:1},
       // Small print can lose the existing mai-ek above อื in อื่นๆ.
       // Re-read real pixels at larger size, never silently fix the OCR text.
@@ -1263,9 +1264,18 @@
         let ocr;
         try { ocr = await readPage(blob); }
         catch { unreadPages.push(n);ocr = {width:canvas.width,height:canvas.height,lines:[]}; }
-        for(const c of candidates){
+        // Recover omitted รถยนต / ประกน typos from literal, high-confidence page glyphs.
+        // locate() rejects partial words such as รถยนต inside correct รถยนต์.
+        const pageCandidates=[...candidates];
+        const pageLines=[...(ocr.refinedLines||[]),...ocr.lines];
+        for(const [wrong,correct] of ['รถยนต','ประกน'].map(wrong=>[wrong,clearPairs.get(wrong)])){
+          if(pageCandidates.some(c=>c.wrong===wrong&&c.correct===correct))continue;
+          if(locate(pageLines,wrong,true).some(hit=>canMark(wrong,correct,hit.line)))
+            pageCandidates.push({wrong,correct});
+        }
+        for(const c of pageCandidates){
           // Locate each occurrence separately; never reuse a coordinate for another word.
-          for(const row of ocr.lines){const match=locate([row],c.wrong);
+          for(const row of pageLines){const match=locate([row],c.wrong);
             if(match.box&&(hoverOnly||canMark(c.wrong,c.correct,match.line))){
               // Validate this occurrence against independent crop readings before painting.
               if (correctedReadingAtRegion({lines:[],validationLines:ocr.validationLines || []},c.correct.replace(/[\p{P}]/gu,''),{box:match.box})) continue;

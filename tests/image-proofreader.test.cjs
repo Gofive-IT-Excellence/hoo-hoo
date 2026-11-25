@@ -590,6 +590,14 @@ test('PDF document preview retains the page and renders red hover targets withou
     const confirmedTypo=await locator.annotatePdf(surnameInput,new File(['pdf'],'test.pdf'),()=>{},
       {hoverOnly:true,pdfjs,readPage:async()=>({...surnameOcr,validationLines:[{text:surname.text,confidence:96,glyphs:surname.characters}]})});
     assert.equal(confirmedTypo.count,1);
+    const omittedInput=input.replace(/<li[\s\S]*?<\/li>/g,'');
+    for(const [text,expected] of [['เอกสารการเช่าซื้อรถยนต',1],['เอกสารการเช่าซื้อรถยนต์',0],['เอกสารประกอบการคำประกน',1],['เอกสารประกอบการคำประกัน',0]]){
+      const r=region(text,30);
+      const missing=await locator.annotatePdf(omittedInput,new File(['pdf'],'test.pdf'),()=>{},
+        {hoverOnly:true,pdfjs,readPage:async()=>({width:500,height:200,lines:[{text,confidence:96,glyphs:r.characters}]})});
+      assert.equal(missing.count,expected);
+      if(expected)assert.equal(new DOMParser().parseFromString(missing.html,'text/html').querySelector('.document-hover-mark').title,text.includes('ประกน')?'ประกัน':'รถยนต์');
+    }
     const fallback=await locator.annotatePdf(input,new File(['pdf'],'test.pdf'),()=>{},
       {hoverOnly:true,pdfjs,readPage:async()=>{throw Error('OCR unavailable');}});
     const fallbackDoc=new DOMParser().parseFromString(fallback.html,'text/html');
