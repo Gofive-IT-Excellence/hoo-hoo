@@ -612,3 +612,39 @@ test('จังหวัด is not highlighted merely to remove a trailing dot o
   const output=locator.reanchor(html,{width:500,height:200,lines:[],paddleRegions:[region('จังหวัด.',30)]});
   assert.equal(output.located,0);assert.equal(output.reviewCount,0);
 });
+
+test('correct address reading prevents mixed-script สาทR and partial กรุงเทพฯ corrections', () => {
+  for (const alias of ['R','S']) {
+    const primary=region('เขตสาท'+alias+' กรุงเทพฯ',30),printed=region('เขตสาทร กรุงเทพฯ',30);
+    const report={total:1,checked:1,unchecked:[],corrections:[
+      {wrong:'สาท'+alias,correct:'สาทส',indices:[0]},
+      {wrong:'เทพฯ',correct:'เทวฯ',indices:[0]},
+    ]};
+    const output=locator.reanchor(audit.render(report,'test.png').html,{
+      width:500,height:200,paddleRegions:[primary],
+      lines:[{text:printed.text,confidence:95,glyphs:printed.characters}],
+    });
+    assert.equal(output.located,0);assert.equal(output.reviewCount,0);
+  }
+});
+
+test('omitted invoice header and total typos are added from exact independent OCR glyphs', () => {
+  const rows=[region('รายล่ะเอียดสินค้า / บริการ',30),region('จำนวนเงินทังหมด:',100)];
+  const report={total:2,checked:2,unchecked:[],corrections:[]};
+  const output=locator.reanchor(audit.render(report,'test.png').html,{
+    width:800,height:200,paddleRegions:rows,
+    lines:rows.map(r=>({text:r.text,confidence:95,glyphs:r.characters})),
+  });
+  const doc=new DOMParser().parseFromString(output.html,'text/html');
+  const labels=[...doc.querySelectorAll('.verified-spelling-correction,.review-spelling-correction')].map(n=>n.textContent);
+  assert.deepEqual(labels,['→ รายละเอียด','→ ทั้งหมด']);
+  assert.equal(output.located,2);assert.equal(output.unlocated,0);
+});
+
+test('correct รายละเอียด and ทั้งหมด do not gain invoice spelling corrections', () => {
+  const rows=[region('รายละเอียดสินค้า / บริการ',30),region('จำนวนเงินทั้งหมด:',100)];
+  const out=locator.reanchor(audit.render({total:2,checked:2,unchecked:[],corrections:[]},'test.png').html,{
+    width:800,height:200,paddleRegions:rows,lines:rows.map(r=>({text:r.text,confidence:95,glyphs:r.characters})),
+  });
+  assert.equal(out.located,0);assert.equal(out.reviewCount,0);
+});

@@ -168,6 +168,14 @@
       !(letter(text[end-1]) && letter(text[end]) && !camel(text[end-1],text[end]));
   }
 
+  function startsAtThaiWordBoundary(text, start, word) {
+    if (!/^[ก-๙]/u.test(word) || !/[ก-๙]/u.test(text[start-1] || '') ||
+        clearPairs.has(word) || contextPairs.has(word)) return true;
+    if (typeof Intl.Segmenter !== 'function') return false;
+    return [...new Intl.Segmenter('th', {granularity:'word'}).segment(text)]
+      .some(part => part.index === start);
+  }
+
   function paddleRegionMatch(ocr, original) {
     const normalize = text => String(text).normalize('NFC').replace(/\s/g, '');
     const word = normalize(original);
@@ -437,7 +445,8 @@
         return cx>=hit.box[0]-2&&cx<=hit.box[2]+2&&cy>=hit.box[1]-3&&cy<=hit.box[3]+3;
       });
       if(!gs.length||!sameInk(union(gs.map(g=>g.box)),hit.box))continue;
-      reads.push(row.text.slice(gs[0].start,gs.at(-1).end).normalize('NFC'));
+      reads.push(startsAtThaiWordBoundary(row.text,gs[0].start,wrong)
+        ? row.text.slice(gs[0].start,gs.at(-1).end).normalize('NFC') : '');
     }
     if(reads.includes(wrong.normalize('NFC')))return 'agreed';
     return reads.length?'contradicted':'unconfirmed';
@@ -947,7 +956,7 @@
         let start = region.text.indexOf(wrong);
         while (start >= 0) {
           if (/^[\p{M}]/u.test(region.text.slice(start + wrong.length)) ||
-              !completeLatinSpan(region.text,start,start+wrong.length)) partialGlyph = true;
+              !completeLatinSpan(region.text,start,start+wrong.length) || !startsAtThaiWordBoundary(region.text,start,wrong)) partialGlyph = true;
           else completeGlyph = true;
           start = region.text.indexOf(wrong, start + wrong.length);
         }
@@ -1067,6 +1076,17 @@
       const reliableWord = proof || matches.some(hit =>
         canMark(original, corrected, hit.line) && checkedReading(ocr, original, hit) !== 'contradicted');
       if (paddleRegion && !reliableWord) {
+        // Browser OCR is an independent reading of primary OpenThai coordinates.
+        // A conflicting reading must not turn a mixed-script OCR error into a fix.
+        if (!canMark(original,corrected,paddleRegion.text) && valid(paddleRegion.wordBox)) {
+          const independent = checkedReading({...ocr,validationLines:[...(ocr.lines || []),...(ocr.validationLines || [])]},
+            original, {box:paddleRegion.wordBox});
+          if (independent === 'contradicted') {li.remove();continue;}
+          if (/[ก-๙]/u.test(original) && /[A-Za-z]/.test(original) && independent !== 'agreed') {
+            const note=doc.createElement('span');note.textContent=' — ยังยืนยันคำที่มีอักษรไทยและอังกฤษปนกันไม่ได้ จึงไม่ขีดทับ';
+            li.append(note);unlocated++;continue;
+          }
+        }
         // A primary OCR box locates ink; it does not confirm that a small,
         // tilted Latin label was transcribed correctly. Do not bypass the
         // independent-reading check just because that box exists.

@@ -410,7 +410,7 @@ async function readPaddleImage(file, parentSignal) {
 
 // Location OCR is optional: the server also receives the original image.
 async function readImageLocations(file, parentSignal) {
-  const signal = AbortSignal.any([parentSignal, AbortSignal.timeout(35_000)]);
+  const signal = AbortSignal.any([parentSignal, AbortSignal.timeout(90_000)]);
   signal.throwIfAborted();
   let onAbort;
   const aborted = new Promise((_, reject) => {
