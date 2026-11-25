@@ -574,6 +574,22 @@ test('PDF document preview retains the page and renders red hover targets withou
     const mark=doc.querySelector('.document-hover-mark');
     assert.equal(mark.title,'พนักงาน');assert.ok(parseFloat(mark.style.height)>0);
     assert.equal(mark.dataset.correction,'พนักงาน');assert.ok(destroyed);
+    // A different surname occurrence must not validate this one's ink.
+    const surname=region('นานสกุล.',30),printed=region('นามสกุล',30);
+    const surnameInput=input.replace(/พนักงน/g,'นานสกุล.').replace(/พนักงาน/g,'นามสกุล.');
+    const surnameOcr={width:500,height:200,lines:[{text:surname.text,confidence:96,glyphs:surname.characters}],
+      validationLines:[{text:printed.text,confidence:96,glyphs:printed.characters}]};
+    const validated=await locator.annotatePdf(surnameInput,new File(['pdf'],'test.pdf'),()=>{},
+      {hoverOnly:true,pdfjs,readPage:async()=>surnameOcr});
+    assert.equal(validated.count,0);
+    const elsewhere={...surnameOcr,validationLines:surnameOcr.validationLines.map(r=>({...r,glyphs:r.glyphs.map(g=>({...g,box:g.box.map((v,i)=>i%2?v+80:v)}))}))};
+    const realTypo=await locator.annotatePdf(surnameInput,new File(['pdf'],'test.pdf'),()=>{},
+      {hoverOnly:true,pdfjs,readPage:async()=>elsewhere});
+    assert.equal(realTypo.count,0);
+    assert.match(realTypo.html,/ยังยืนยันคำจากภาพเฉพาะจุดไม่ได้/);
+    const confirmedTypo=await locator.annotatePdf(surnameInput,new File(['pdf'],'test.pdf'),()=>{},
+      {hoverOnly:true,pdfjs,readPage:async()=>({...surnameOcr,validationLines:[{text:surname.text,confidence:96,glyphs:surname.characters}]})});
+    assert.equal(confirmedTypo.count,1);
     const fallback=await locator.annotatePdf(input,new File(['pdf'],'test.pdf'),()=>{},
       {hoverOnly:true,pdfjs,readPage:async()=>{throw Error('OCR unavailable');}});
     const fallbackDoc=new DOMParser().parseFromString(fallback.html,'text/html');

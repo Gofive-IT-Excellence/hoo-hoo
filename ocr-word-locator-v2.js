@@ -656,6 +656,8 @@
       // Small print can lose the existing mai-ek above อื in อื่นๆ.
       // Re-read real pixels at larger size, never silently fix the OCR text.
       ...['อืนๆ','อนๆ','อินๆ'].map(search=>({search,correct:'อื่นๆ',mode:'7',scale:3,upperPadding:1})),
+      // Form dots can make ม look like น in the full-page OCR pass.
+      ...['นานสกุล','นามสกุล'].map(search=>({search,correct:'นามสกุล',mode:'7',scale:3})),
       {search:'ฝรั่ง',wrong:'ฝรัง',mode:'7',scale:2},
       {search:'อย่าเชื่อ',wrong:'อยา',mode:'7',scale:2}
     ];
@@ -671,8 +673,9 @@
         }
       }
       // A duplicate phrase cannot be assigned a correction by guessing.
-      if(matches.length!==1)continue;
-      const {box:[x,y,r,b],row}=matches[0],pad=12;
+      if(matches.length!==1 && check.correct!=='นามสกุล')continue;
+      for (const match of matches) {
+      const {box:[x,y,r,b],row}=match,pad=12;
       if(check.search==='ฝรั่ง'){
         const sx=Math.max(0,Math.floor(x)),sy=Math.max(0,Math.floor(y-20));
         const sw=Math.min(canvas.width-sx,Math.ceil(r)-sx),sh=Math.min(canvas.height-sy,Math.ceil(b+4)-sy);
@@ -682,7 +685,7 @@
       }
 
       const lineLeft=Math.min(...row.glyphs.map(g=>g.box[0]));
-      const left=Math.max(0,Math.floor(Math.max(x-200,lineLeft)-pad)),top=Math.max(0,Math.floor(y-Math.max(pad,(check.upperPadding||0)*(b-y))));
+      const left=Math.max(0,Math.floor(Math.max(x-(check.correct==='นามสกุล'?0:200),lineLeft)-pad)),top=Math.max(0,Math.floor(y-Math.max(pad,(check.upperPadding||0)*(b-y))));
       const right=Math.min(canvas.width,Math.ceil(r+pad)),bottom=Math.min(canvas.height,Math.ceil(b+pad));
       const crop=document.createElement('canvas');
       crop.width=(right-left)*check.scale;crop.height=(bottom-top)*check.scale;
@@ -696,6 +699,9 @@
         console.warn('Thai mark recheck failed',error);
       }
       crop.width=crop.height=0;
+      if(check.correct==='นามสกุล'){
+        for(const next of rescanned.filter(row=>row.confidence>=85)) validationLines.push({...next,glyphs:next.glyphs.map(g=>({...g,box:g.box.map((v,i)=>v/check.scale+(i%2?top:left))}))});
+      }
       if(check.correct){
         if(rescanned.some(row=>row.text.includes(check.correct)&&row.confidence>=70))confirmed.add(check.correct);
         for (const next of rescanned.filter(row=>row.text.includes(check.correct)&&row.confidence>=85)) {
@@ -711,6 +717,7 @@
           }))});
         }
       }
+    }
     }
     return {refinedLines,pixelCorrections,validationLines,confirmed:[...confirmed]};
   }
@@ -1231,7 +1238,7 @@
     const pdfjs=pdfjsOverride || await import(new URL('vendor/pdfjs/pdf.mjs?v=20261124-pdf-view',document.baseURI).href);
     pdfjs.GlobalWorkerOptions.workerSrc=new URL('vendor/pdfjs/pdf.worker.mjs?v=20261124-pdf-view',document.baseURI).href;
     const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
-    let count=0;const unreadPages=[];
+    let count=0,unconfirmedWords=0;const unreadPages=[];
     try{
       if(pdf.numPages>20)throw Error('PDF เกิน 20 หน้า: ยังไม่ได้ยืนยันพิกัดคำ กรุณาแบ่งไฟล์');
       const preview=doc.querySelector('.pdf-overlay-viewer');
@@ -1259,11 +1266,19 @@
         for(const c of candidates){
           // Locate each occurrence separately; never reuse a coordinate for another word.
           for(const row of ocr.lines){const match=locate([row],c.wrong);
-            if(match.box&&(hoverOnly||canMark(c.wrong,c.correct,match.line))){if(addOverlay(doc,wrap,match,ocr,c.wrong,c.correct))count++;}
+            if(match.box&&(hoverOnly||canMark(c.wrong,c.correct,match.line))){
+              // Validate this occurrence against independent crop readings before painting.
+              if (correctedReadingAtRegion({lines:[],validationLines:ocr.validationLines || []},c.correct.replace(/[\p{P}]/gu,''),{box:match.box})) continue;
+              if(c.correct.replace(/[\s\p{P}]/gu,'')==='นามสกุล'){
+                const focused=locate(ocr.validationLines || [],c.wrong.replace(/[\p{P}]/gu,''));
+                if(!valid(focused.box)||!sameInk(focused.box,match.box)){unconfirmedWords++;continue;}
+              }
+              if(addOverlay(doc,wrap,match,ocr,c.wrong,c.correct))count++;}
           }
         }
         preview.append(wrap);canvas.width=canvas.height=0;page.cleanup();
       }
+      if(unconfirmedWords){const note=doc.createElement('p');note.textContent='ยังยืนยันคำจากภาพเฉพาะจุดไม่ได้ '+unconfirmedWords+' ตำแหน่ง จึงไม่ลงสี โปรดตรวจทานกับต้นฉบับ';preview.before(note);}
       if (unreadPages.length) {
         const note=doc.createElement('p');note.textContent='แสดง PDF ต้นฉบับแล้ว แต่ยังยืนยันพิกัดคำไม่ได้ในหน้า '+unreadPages.join(', ');preview.before(note);
       }
