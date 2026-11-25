@@ -1018,7 +1018,14 @@
     for (const li of panel.querySelectorAll('li')) {
       const mark = li.querySelector('mark'), bold = li.querySelector('b');
       if (!mark || !bold) continue;
-      const wrong = mark.textContent.trim(), correct = bold.textContent.trim();
+      const wrong = mark.textContent.trim();
+      let correct = bold.textContent.trim();
+      const contextRows=scopeCorrection(ocr,li);
+      const context=[...(contextRows.lines||[]),...(contextRows.paddleRegions||[])]
+        .filter(row=>row.text.includes(wrong)).map(row=>row.text).join(' ');
+      const reviewed=reviewCorrection(wrong,correct,context);
+      if(!reviewed){li.remove();continue;}
+      correct=reviewed.correct;bold.textContent=correct;
       if (changesValidFunctionWord(wrong, correct)) {li.remove();continue;}
       const span = correctionWordSpan(wrong, correct);
       if (!span) {
@@ -1232,6 +1239,10 @@
     if(summary)summary.textContent='ผ่านกฎสะกดในข้อความ '+marked+' จุด — PDF ต้องยืนยันพิกัดภาพเพิ่ม ไม่ได้แก้ต้นฉบับ';
     return '<!doctype html>'+doc.documentElement.outerHTML;
   }
+  const reviewCorrection=(wrong,correct,context)=>{
+    const audit=typeof module!=='undefined'&&module.exports?require('./image-proofreader.js'):root.HooHooImageAudit;
+    return audit?.reviewCorrection?audit.reviewCorrection(wrong,correct,context):{wrong,correct};
+  };
   async function annotatePdf(html,file,progress=()=>{},{hoverOnly=false,pdfjs:pdfjsOverride,readPage=read}={}){
     const doc=new DOMParser().parseFromString(html,'text/html');
     const candidates=[...doc.querySelectorAll('.correction-panel li')].map(li=>({wrong:li.querySelector('.correction-wrong')?.textContent.trim(),correct:li.querySelector('.correction-correct')?.textContent.trim()})).filter(c=>c.wrong&&c.correct)
@@ -1275,7 +1286,10 @@
         }
         for(const c of pageCandidates){
           // Locate each occurrence separately; never reuse a coordinate for another word.
-          for(const row of pageLines){const match=locate([row],c.wrong);
+          for(const row of pageLines){
+            const reviewed=reviewCorrection(c.wrong,c.correct,row.text);
+            if(!reviewed)continue;
+            const match=locate([row],c.wrong);
             if(match.box&&(hoverOnly||canMark(c.wrong,c.correct,match.line))){
               // Validate this occurrence against independent crop readings before painting.
               if (correctedReadingAtRegion({lines:[],validationLines:ocr.validationLines || []},c.correct.replace(/[\p{P}]/gu,''),{box:match.box})) continue;
@@ -1283,7 +1297,7 @@
                 const focused=locate(ocr.validationLines || [],c.wrong.replace(/[\p{P}]/gu,''));
                 if(!valid(focused.box)||!sameInk(focused.box,match.box)){unconfirmedWords++;continue;}
               }
-              if(addOverlay(doc,wrap,match,ocr,c.wrong,c.correct))count++;}
+              if(addOverlay(doc,wrap,match,ocr,c.wrong,reviewed.correct))count++;}
           }
         }
         preview.append(wrap);canvas.width=canvas.height=0;page.cleanup();

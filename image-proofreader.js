@@ -8,6 +8,19 @@
   const validBox = b => Array.isArray(b) && b.length === 4 && b.every(Number.isFinite) &&
     b[0] >= 0 && b[1] >= 0 && b[2] <= 1000 && b[3] <= 1000 && b[2] > b[0] && b[3] > b[1];
 
+  // Spelling review must preserve valid variants, names, and currency units.
+  function reviewCorrection(wrong, correct, context='') {
+    const a=spellingText(wrong),b=spellingText(correct);
+    if(a===b || protectedSpelling(wrong))return null;
+    if(a.includes('สิทธิ') && a.replace(/สิทธิ์/g,'สิทธิ')===b.replace(/สิทธิ์/g,'สิทธิ'))return null;
+    if(/(?:^|\s)บริษัท|จำกัด|มหาชน|Public Company|Company Limited|\bCo\.?[ ,]+Ltd\b/i.test(context))return null;
+    if(/^baht$/i.test(a))return null;
+    if(/^bath$/i.test(b) && /บาท|มูลค่า|จำนวนเงิน|Total Amount|Currency|Baht/i.test(context)){
+      correct='Baht';if(a.toLowerCase()==='baht')return null;
+    }
+    return {wrong,correct};
+  }
+
   function plan(payload) {
     const rows = payload.regions.map((region, index) => ({...region, index}));
     const eligible = rows.filter(row => compact(row.text) && validBox(row.bbox));
@@ -40,7 +53,8 @@
               !row.text.includes(wrong) || wrong.length > 100 || correct.length > 100) { valid = false; continue; }
           const starts = [...row.text.matchAll(new RegExp(wrong.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gu'))].map(match => match.index);
           if (!starts.some(start => !/^[\p{M}]/u.test(row.text.slice(start + wrong.length)))) continue;
-          if (!protectedSpelling(wrong) && spellingText(wrong) !== spellingText(correct)) accepted.push({wrong, correct, indices: [row.index]});
+          const reviewed=reviewCorrection(wrong,correct,row.text);
+          if(reviewed)accepted.push({...reviewed,indices:[row.index]});
         }
         if (valid) { checked.push(row.index); corrections.push(...accepted); }
       }
@@ -55,7 +69,8 @@
       if (!wrong || !correct || protectedSpelling(wrong) || spellingText(wrong) === spellingText(correct)) continue;
       // A model cannot invent a source word or place a crop's correction elsewhere.
       const indices = rows.filter(row => compact(row.text).includes(compact(wrong))).map(row => row.index);
-      if (indices.length) corrections.push({wrong, correct, indices});
+      const reviewed=reviewCorrection(wrong,correct,rows.filter(row=>indices.includes(row.index)).map(row=>row.text).join(' '));
+      if(indices.length && reviewed)corrections.push({...reviewed,indices});
     }
     const coverage = result.lineCoverage;
     const unchecked = coverage?.unchecked;
@@ -228,7 +243,7 @@
     doc.querySelectorAll('.correction-panel b').forEach(n=>n.className='correction-correct');
     return {...result, html:'<!doctype html>'+doc.documentElement.outerHTML};
   }
-  const api = {plan, parse, audit, render, run, runDocument, markDocumentText};
+  const api = {reviewCorrection, plan, parse, audit, render, run, runDocument, markDocumentText};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.HooHooImageAudit = api;
 })(typeof window === 'undefined' ? globalThis : window);

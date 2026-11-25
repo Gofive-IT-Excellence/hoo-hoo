@@ -598,6 +598,17 @@ test('PDF document preview retains the page and renders red hover targets withou
       assert.equal(missing.count,expected);
       if(expected)assert.equal(new DOMParser().parseFromString(missing.html,'text/html').querySelector('.document-hover-mark').title,text.includes('ประกน')?'ประกัน':'รถยนต์');
     }
+    for(const [text,wrong,correct] of [
+      ['ข้อกำหนดว่าด้วยสิทธิและหน้าที่','สิทธิ','สิทธิ์'],
+      ['บริษัท เจเอ็มที เซอร์วิสเซ็ส จำกัด (มหาชน)','เซ็ส','เซส'],
+      ['Total Amount [*] Baht','Baht','Bath'],
+    ]){
+      const r=region(text,30);
+      const candidate=input.replace(/พนักงน/g,wrong).replace(/พนักงาน/g,correct);
+      const result=await locator.annotatePdf(candidate,new File(['pdf'],'test.pdf'),()=>{},
+        {hoverOnly:true,pdfjs,readPage:async()=>({width:800,height:200,lines:[{text,confidence:96,glyphs:r.characters}]})});
+      assert.equal(result.count,0,text);
+    }
     const fallback=await locator.annotatePdf(input,new File(['pdf'],'test.pdf'),()=>{},
       {hoverOnly:true,pdfjs,readPage:async()=>{throw Error('OCR unavailable');}});
     const fallbackDoc=new DOMParser().parseFromString(fallback.html,'text/html');
@@ -702,4 +713,21 @@ test('focused total crop overrides full-page OCR that silently inserts the missi
   assert.equal(doc.querySelector('.verified-spelling-correction')?.textContent,'→ ทั้งหมด');
   const correct=locator.reanchor(audit.render(report,'test.png').html,{...base,paddleRegions:[normalised],refinedLines:[reading(normalised)]});
   assert.equal(correct.located,0);
+});
+
+
+test('context review preserves rights variants, company names and the Baht currency unit', () => {
+  for(const [wrong,correct,context] of [
+    ['สิทธิ','สิทธิ์','ข้อกำหนดว่าด้วยสิทธิและหน้าที่'],
+    ['สิทธิ์','สิทธิ','ผู้มีสิทธิ์รับเงิน'],
+    ['เซ็ส','เซส','บริษัท เจเอ็มที เน็ทเวอร์ค เซอร์วิสเซ็ส จำกัด (มหาชน)'],
+    ['Baht','Bath','Total Amount [*] Baht'],
+  ]){
+    assert.equal(audit.reviewCorrection(wrong,correct,context),null);
+    assert.deepEqual(audit.parse({lines:[{id:0,corrections:[{wrong,correct}]}]},[{...row(context,0),index:0}]).corrections,[]);
+  }
+  assert.deepEqual(audit.reviewCorrection('Bhat','Bath','Total Amount Bhat'),{wrong:'Bhat',correct:'Baht'});
+  assert.deepEqual(audit.reviewCorrection('Bhat','Baht','Total Amount Bhat'),{wrong:'Bhat',correct:'Baht'});
+  assert.deepEqual(audit.reviewCorrection('batb','bath','Take a batb'),{wrong:'batb',correct:'bath'});
+  assert.deepEqual(audit.reviewCorrection('ประกน','ประกัน','เอกสารคำประกน'),{wrong:'ประกน',correct:'ประกัน'});
 });
