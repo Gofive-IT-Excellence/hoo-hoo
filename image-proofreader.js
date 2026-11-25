@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   const compact = value => String(value || '').normalize('NFC').replace(/ำ/g, 'ํา').replace(/\s/g, '');
-  const spellingText = value => compact(value).replace(/ๆ/g, '');
+  const spellingText = value => compact(value).replace(/[ๆ\p{P}]/gu, '');
   const validBox = b => Array.isArray(b) && b.length === 4 && b.every(Number.isFinite) &&
     b[0] >= 0 && b[1] >= 0 && b[2] <= 1000 && b[3] <= 1000 && b[2] > b[0] && b[3] > b[1];
 
@@ -177,7 +177,7 @@
         if (Array.isArray(correction.indices) && !correction.indices.includes(index)) continue;
         const {wrong, correct} = correction;
         const start = row.text.indexOf(wrong);
-        if (start < 0 || row.text.indexOf(wrong, start + wrong.length) >= 0 || wrong === correct) continue;
+        if (start < 0 || row.text.indexOf(wrong, start + wrong.length) >= 0 || spellingText(wrong) === spellingText(correct)) continue;
         matches.push({start, end:start + wrong.length, correct});
       }
       matches.sort((a,b) => a.start - b.start || b.end - a.end);

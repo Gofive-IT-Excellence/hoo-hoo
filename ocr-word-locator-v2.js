@@ -250,7 +250,7 @@
 
   function correctionWordSpan(wrong, correct) {
     if (!wrong || !correct || canonicalThaiReading(wrong) === canonicalThaiReading(correct) ||
-        canonicalThaiReading(wrong).replace(/[\sๆ]/g, '') === canonicalThaiReading(correct).replace(/[\sๆ]/g, '')) return null;
+        canonicalThaiReading(wrong).replace(/[\sๆ\p{P}]/gu, '') === canonicalThaiReading(correct).replace(/[\sๆ\p{P}]/gu, '')) return null;
     // Trusted spelling pairs may contain several Thai dictionary segments.
     if (clearPairs.get(wrong) === correct) return {wrong, correct};
     if (typeof Intl.Segmenter !== 'function') return null;
@@ -1004,7 +1004,7 @@
       if (changesValidFunctionWord(wrong, correct)) {li.remove();continue;}
       const span = correctionWordSpan(wrong, correct);
       if (!span) {
-        if (canonicalThaiReading(wrong).replace(/[\sๆ]/g, '') === canonicalThaiReading(correct).replace(/[\sๆ]/g, '')) li.remove();
+        if (canonicalThaiReading(wrong).replace(/[\sๆ\p{P}]/gu, '') === canonicalThaiReading(correct).replace(/[\sๆ\p{P}]/gu, '')) li.remove();
         else li.setAttribute('data-unresolved-word-span', 'true');
         continue;
       }

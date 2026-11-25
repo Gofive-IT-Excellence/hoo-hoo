@@ -28,6 +28,12 @@ wrong และ correct ต้องสั้นที่สุดที่ย�
 FUNCTION_WORDS = frozenset('ที่ และ หรือ ซึ่ง ใน ของ ให้ ได้ เป็น จะ แต่ กับ จาก โดย เมื่อ นั้น นี้ ละ ล่ะ นะ น่ะ คะ ค่ะ ครับ'.split())
 
 
+def spelling_text(text):
+    text = unicodedata.normalize('NFC', text).replace('ำ', 'ํา')
+    return ''.join(ch for ch in text if not ch.isspace() and ch != 'ๆ'
+                   and not unicodedata.category(ch).startswith('P'))
+
+
 def changes_valid_function_word(wrong, correct):
     if wrong == correct:
         return False
@@ -147,8 +153,8 @@ def validate_result(result, lines):
                 continue
             if changes_valid_function_word(wrong, correct):
                 continue
-            # Repetition punctuation and its spacing are editorial style, not spelling.
-            if ''.join(wrong.split()).replace('ๆ', '') == ''.join(correct.split()).replace('ๆ', ''):
+            # Punctuation-only edits (e.g. จังหวัด. → จังหวัด) are not spelling errors.
+            if spelling_text(wrong) == spelling_text(correct):
                 continue
             if not conservative_edit(wrong, correct) or introduced_repetition(source[index], wrong, correct):
                 invalid = True

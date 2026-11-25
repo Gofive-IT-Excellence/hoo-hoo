@@ -599,3 +599,16 @@ test('PDF extraction always retains an original PDF viewer rather than a flatten
     assert.equal(atob(pdf.getAttribute('data').split(',')[1]),'%PDF-fixture');
   } finally {global.fetch=originalFetch;}
 });
+
+test('จังหวัด is not highlighted merely to remove a trailing dot or form punctuation', () => {
+  for (const [wrong,correct] of [['จังหวัด.','จังหวัด'],['วันที่..','วันที่:'],['ลงชื่อ...','ลงชื่อ.']]) {
+    assert.equal(locator.correctionWordSpan(wrong,correct),null);
+    const parsed=audit.parse({lines:[{id:0,corrections:[{wrong,correct}]}]},[{...row(wrong,0),index:0}]);
+    assert.deepEqual(parsed.corrections,[]);
+  }
+  const parsed=audit.parse({lines:[{id:0,corrections:[{wrong:'จังหวด.',correct:'จังหวัด'}]}]},[{...row('จังหวด.',0),index:0}]);
+  assert.equal(parsed.corrections.length,1);
+  const html=audit.render({total:1,checked:1,unchecked:[],corrections:[{wrong:'จังหวัด.',correct:'จังหวัด',indices:[0]}]},'test.png').html.replace('<mark>','<mark class="correction-wrong">').replace('<b>','<b class="correction-correct">');
+  const output=locator.reanchor(html,{width:500,height:200,lines:[],paddleRegions:[region('จังหวัด.',30)]});
+  assert.equal(output.located,0);assert.equal(output.reviewCount,0);
+});

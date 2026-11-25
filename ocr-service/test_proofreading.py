@@ -116,3 +116,13 @@ class ProofreadingTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class PunctuationCorrectionTests(unittest.TestCase):
+    def test_form_punctuation_is_not_a_spelling_error(self):
+        for wrong, correct in [('จังหวัด.', 'จังหวัด'), ('วันที่..', 'วันที่:')]:
+            result = validate_result({'lines':[{'id':0,'corrections':[{'wrong':wrong,'correct':correct}]}]}, [{'id':0,'text':wrong}])
+            self.assertEqual(result['lines'][0]['corrections'], [])
+            self.assertEqual(result['unchecked'], [])
+    def test_real_missing_vowel_is_still_checked(self):
+        result = validate_result({'lines':[{'id':0,'corrections':[{'wrong':'จังหวด','correct':'จังหวัด'}]}]}, [{'id':0,'text':'จังหวด.'}])
+        self.assertEqual(result['lines'][0]['corrections'], [{'wrong':'จังหวด','correct':'จังหวัด'}])
