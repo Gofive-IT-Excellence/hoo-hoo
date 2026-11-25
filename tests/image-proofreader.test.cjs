@@ -663,3 +663,19 @@ test('correct นามสกุล form label is never converted into a spellin
   assert.deepEqual(locator.correctionWordSpan(wrong,correct),{wrong,correct});
   assert.equal(audit.parse({lines:[{id:0,corrections:[{wrong,correct}]}]},[{...row(wrong,0),index:0}]).corrections.length,1);
 });
+
+
+test('focused total crop overrides full-page OCR that silently inserts the missing tone', () => {
+  const printed=region('จำนวนเงินทังหมด:',30),normalised=region('จำนวนเงินทั้งหมด:',30);
+  const report={total:1,checked:1,unchecked:[],corrections:[]};
+  const reading=r=>({text:r.text,confidence:92,glyphs:r.characters});
+  const base={width:800,height:200,paddleRegions:[printed],lines:[reading(normalised)]};
+  const before=locator.reanchor(audit.render(report,'test.png').html,base);
+  assert.equal(before.located,0);
+  const after=locator.reanchor(audit.render(report,'test.png').html,{...base,refinedLines:[reading(printed)]});
+  const doc=new DOMParser().parseFromString(after.html,'text/html');
+  assert.equal(after.located,1);
+  assert.equal(doc.querySelector('.verified-spelling-correction')?.textContent,'→ ทั้งหมด');
+  const correct=locator.reanchor(audit.render(report,'test.png').html,{...base,paddleRegions:[normalised],refinedLines:[reading(normalised)]});
+  assert.equal(correct.located,0);
+});

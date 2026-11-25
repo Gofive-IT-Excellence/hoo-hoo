@@ -1066,11 +1066,16 @@
       const conflicting=alternatives.get(alternativeKey(original.normalize('NFC'), li))?.size>1;
       const exactHits=corrected&&ocr&&!conflicting?locate(ocr.lines,original,true):[];
       const proof=ocr?.pixelCorrections?.find(p=>p.pixelVerified&&p.wrong===original&&p.correct===corrected);
-      const matches=proof?[proof]:exactHits.length?exactHits:[];
+      // A focused crop can recover a missing Thai mark that full-page OCR
+      // silently normalised. Keep its exact glyph boxes and known spelling pair.
+      const focused = clearPairs.get(original) === corrected
+        ? locate(ocr.refinedLines || [], original) : {};
+      const focusedHits = valid(focused.box) ? [focused] : [];
+      const matches=proof?[proof]:focusedHits.length?focusedHits:exactHits.length?exactHits:[];
       const match=original==='ฟร!'&&posterFree?posterFree:
         corrected&&ocr&&!conflicting?locateBest(ocr,original):{reason:'unavailable'};
       const paddleRegion = !conflicting ? paddleRegionMatch(ocr, original) : null;
-      if (!proof && correctedReadingAtRegion(ocr, corrected, paddleRegion)) {
+      if (!proof && !focusedHits.length && correctedReadingAtRegion(ocr, corrected, paddleRegion)) {
         li.remove();
         continue;
       }
