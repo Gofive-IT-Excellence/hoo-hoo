@@ -649,6 +649,7 @@
   }
   async function refineThaiMarks(worker,canvas,rows){
     const refinedLines=[],pixelCorrections=[],validationLines=[],confirmed=new Set();
+    const focusedFormWords=new Set(['นามสกุล','ทะเบียน']);
     const checks=[
       {search:'รายละเอียด',wrong:'รายล่ะเอียด',mode:'7',scale:1},
       {search:'ทั้งหมด',wrong:'ทังหมด',mode:'7',scale:2},
@@ -659,6 +660,7 @@
       ...['อืนๆ','อนๆ','อินๆ'].map(search=>({search,correct:'อื่นๆ',mode:'7',scale:3,upperPadding:1})),
       // Form dots can make ม look like น in the full-page OCR pass.
       ...['นานสกุล','นามสกุล'].map(search=>({search,correct:'นามสกุล',mode:'7',scale:3})),
+      ...['ทะเบี้ยน','ทะเบียน'].map(search=>({search,correct:'ทะเบียน',mode:'7',scale:3,upperPadding:1})),
       {search:'ฝรั่ง',wrong:'ฝรัง',mode:'7',scale:2},
       {search:'อย่าเชื่อ',wrong:'อยา',mode:'7',scale:2}
     ];
@@ -674,7 +676,7 @@
         }
       }
       // A duplicate phrase cannot be assigned a correction by guessing.
-      if(matches.length!==1 && check.correct!=='นามสกุล')continue;
+      if(matches.length!==1 && !focusedFormWords.has(check.correct))continue;
       for (const match of matches) {
       const {box:[x,y,r,b],row}=match,pad=12;
       if(check.search==='ฝรั่ง'){
@@ -686,7 +688,7 @@
       }
 
       const lineLeft=Math.min(...row.glyphs.map(g=>g.box[0]));
-      const left=Math.max(0,Math.floor(Math.max(x-(check.correct==='นามสกุล'?0:200),lineLeft)-pad)),top=Math.max(0,Math.floor(y-Math.max(pad,(check.upperPadding||0)*(b-y))));
+      const left=Math.max(0,Math.floor(Math.max(x-(focusedFormWords.has(check.correct)?0:200),lineLeft)-pad)),top=Math.max(0,Math.floor(y-Math.max(pad,(check.upperPadding||0)*(b-y))));
       const right=Math.min(canvas.width,Math.ceil(r+pad)),bottom=Math.min(canvas.height,Math.ceil(b+pad));
       const crop=document.createElement('canvas');
       crop.width=(right-left)*check.scale;crop.height=(bottom-top)*check.scale;
@@ -700,7 +702,7 @@
         console.warn('Thai mark recheck failed',error);
       }
       crop.width=crop.height=0;
-      if(check.correct==='นามสกุล'){
+      if(focusedFormWords.has(check.correct)){
         for(const next of rescanned.filter(row=>row.confidence>=85)) validationLines.push({...next,glyphs:next.glyphs.map(g=>({...g,box:g.box.map((v,i)=>v/check.scale+(i%2?top:left))}))});
       }
       if(check.correct){
@@ -1293,7 +1295,7 @@
             if(match.box&&(hoverOnly||canMark(c.wrong,c.correct,match.line))){
               // Validate this occurrence against independent crop readings before painting.
               if (correctedReadingAtRegion({lines:[],validationLines:ocr.validationLines || []},c.correct.replace(/[\p{P}]/gu,''),{box:match.box})) continue;
-              if(c.correct.replace(/[\s\p{P}]/gu,'')==='นามสกุล'){
+              if(['นามสกุล','ทะเบียน'].includes(c.correct.replace(/[\s\p{P}]/gu,''))){
                 const focused=locate(ocr.validationLines || [],c.wrong.replace(/[\p{P}]/gu,''));
                 if(!valid(focused.box)||!sameInk(focused.box,match.box)){unconfirmedWords++;continue;}
               }

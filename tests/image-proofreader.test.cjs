@@ -609,6 +609,18 @@ test('PDF document preview retains the page and renders red hover targets withou
         {hoverOnly:true,pdfjs,readPage:async()=>({width:800,height:200,lines:[{text,confidence:96,glyphs:r.characters}]})});
       assert.equal(result.count,0,text);
     }
+    const regWrong=region('ทะเบี้ยน',30),regCorrect=region('ทะเบียน',30);
+    const regInput=input.replace(/พนักงน/g,'ทะเบี้ยน').replace(/พนักงาน/g,'ทะเบียน');
+    const regRead={width:500,height:200,lines:[{text:regWrong.text,confidence:96,glyphs:regWrong.characters}]};
+    for(const validationLines of [[],[{text:regCorrect.text,confidence:96,glyphs:regCorrect.characters}]]){
+      const tested=await locator.annotatePdf(regInput,new File(['pdf'],'test.pdf'),()=>{},
+        {hoverOnly:true,pdfjs,readPage:async()=>({...regRead,validationLines})});
+      assert.equal(tested.count,0);
+    }
+    const confirmedRegisterTypo=await locator.annotatePdf(regInput,new File(['pdf'],'test.pdf'),()=>{},
+      {hoverOnly:true,pdfjs,readPage:async()=>({...regRead,validationLines:regRead.lines})});
+    assert.equal(confirmedRegisterTypo.count,1);
+    assert.equal(audit.reviewCorrection('ทะเบียน','ทะเบี้ยน','นายทะเบียน'),null);
     const fallback=await locator.annotatePdf(input,new File(['pdf'],'test.pdf'),()=>{},
       {hoverOnly:true,pdfjs,readPage:async()=>{throw Error('OCR unavailable');}});
     const fallbackDoc=new DOMParser().parseFromString(fallback.html,'text/html');
